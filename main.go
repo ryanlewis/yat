@@ -10,7 +10,7 @@ import (
 )
 
 type cli struct {
-	Dir  string `help:"Path to items directory." type:"path" env:"YAT_DIR"`
+	Dir  string `help:"Path to items directory (overrides .yat.yaml)." type:"path" env:"YAT_DIR"`
 	JSON bool   `help:"Output as JSON." short:"j"`
 
 	Ready    cmd.ReadyCmd    `cmd:"" help:"Show items ready to work on."`

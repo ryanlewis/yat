@@ -31,6 +31,8 @@ internal/
     mutate.go        In-place status updates (rewrites frontmatter, preserves body)
   graph/             Dependency graph (Kahn's algorithm for topological layers)
     graph.go         Build, Ready, Blocked, WaitingOn, UnblockedBy, cycle detection
+  config/            Project config file loading (.yat.yaml / .yat.local.yaml)
+    config.go        Load with directory traversal, tilde expansion
   cmd/               One file per command, all implement Run(*RunContext) error
     context.go       RunContext: loads items, builds graph, shared by all commands
 ```
@@ -38,6 +40,23 @@ internal/
 **Data flow:** `main.go` → `cmd.NewRunContext(dir)` → `item.LoadAll(dir)` → `graph.Build(items)` → command `.Run(rc)`.
 
 Every command supports text and `--json` output modes. Text goes through `tabwriter`; JSON through `encoding/json`.
+
+## Project Config (`.yat.yaml`)
+
+yat looks for a project config file to set defaults (e.g. the items directory). On startup, if `--dir` is not passed, it searches from the current directory up to the filesystem root for the first match in this priority order:
+
+1. `.yat.local.yaml` — per-machine overrides (gitignore this)
+2. `.yat.local.yml`
+3. `.yat.yaml` — shared project config (commit this)
+4. `.yat.yml`
+
+The config file is YAML with one field:
+
+```yaml
+dir: path/to/items   # equivalent to --dir; supports ~ for home directory
+```
+
+Resolution order for the items directory: `--dir` flag / `YAT_DIR` env → config file `dir` → default `spec`.
 
 ## Conventions
 

@@ -103,6 +103,20 @@ The `yat` field accepts a comma-delimited list of directives. Currently supporte
 | `YAT_DIR`             | `spec`  | Same, via environment       |
 | `-j` / `--json`       | `false` | Output as JSON              |
 
+### Project config file
+
+Instead of passing `--dir` every time, you can create a `.yat.yaml` (or `.yat.yml`) in your project root:
+
+```yaml
+dir: issues
+```
+
+yat searches from the current directory upward, so the config works from any subdirectory. The `dir` field supports `~` for the home directory.
+
+For per-machine overrides that shouldn't be committed, use `.yat.local.yaml` (or `.yat.local.yml`) — these take priority over the shared config.
+
+**Resolution order:** `--dir` / `YAT_DIR` → `.yat.local.yaml` → `.yat.local.yml` → `.yat.yaml` → `.yat.yml` → `spec`
+
 ## JSON output
 
 All commands support `--json` for machine-readable output, useful for scripting or piping into other tools:
