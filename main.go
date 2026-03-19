@@ -6,10 +6,11 @@ import (
 
 	"github.com/alecthomas/kong"
 	"github.com/ryanlewis/yat/internal/cmd"
+	"github.com/ryanlewis/yat/internal/config"
 )
 
 type cli struct {
-	Dir  string `help:"Path to items directory." type:"path" env:"YAT_DIR" default:"spec"`
+	Dir  string `help:"Path to items directory." type:"path" env:"YAT_DIR"`
 	JSON bool   `help:"Output as JSON." short:"j"`
 
 	Ready    cmd.ReadyCmd    `cmd:"" help:"Show items ready to work on."`
@@ -34,7 +35,22 @@ func main() {
 		kong.UsageOnError(),
 	)
 
-	rc, err := cmd.NewRunContext(c.Dir, c.JSON)
+	dir := c.Dir
+	if dir == "" {
+		cfg, cfgErr := config.Load()
+		if cfgErr != nil {
+			fmt.Fprintf(os.Stderr, "error: %v\n", cfgErr)
+			os.Exit(1)
+		}
+
+		dir = cfg.Dir
+	}
+
+	if dir == "" {
+		dir = "spec"
+	}
+
+	rc, err := cmd.NewRunContext(dir, c.JSON)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		os.Exit(1)
