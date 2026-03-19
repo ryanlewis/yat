@@ -28,13 +28,18 @@ func (s *ShowCmd) Run(rc *RunContext) error {
 	}
 
 	if rc.JSON {
+		deps := item.Dependencies
+		if deps == nil {
+			deps = []string{}
+		}
+
 		return rc.writeJSON(showJSON{
 			ID:           item.ID,
 			Title:        item.Title,
 			Type:         item.Type,
 			Priority:     string(item.Priority),
 			Points:       item.Points,
-			Dependencies: item.Dependencies,
+			Dependencies: deps,
 			Status:       string(item.Status),
 			Phase:        item.Phase,
 			FilePath:     item.FilePath,

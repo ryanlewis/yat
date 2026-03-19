@@ -27,7 +27,10 @@ func main() {
 
 	ctx := kong.Parse(&c,
 		kong.Name("yat"),
-		kong.Description("YAML tracker — a lightweight CLI for issue tracking with YAML."),
+		kong.Description("YAML tracker — a lightweight CLI for issue tracking with YAML.\n\n"+
+			"Items are .md files with YAML frontmatter containing an id field.\n"+
+			"Non-item markdown files are silently skipped.\n"+
+			"Add \"yat: ignore\" to frontmatter to explicitly exclude a file."),
 		kong.UsageOnError(),
 	)
 

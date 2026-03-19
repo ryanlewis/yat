@@ -728,9 +728,9 @@ func TestNewRunContext_EmptyDir(t *testing.T) {
 	}
 }
 
-// --- pluraliseType ---
+// --- pluralizeType ---
 
-func TestPluraliseType(t *testing.T) {
+func TestPluralizeType(t *testing.T) {
 	tests := []struct {
 		input string
 		want  string
@@ -741,9 +741,9 @@ func TestPluraliseType(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		got := pluraliseType(tt.input)
+		got := pluralizeType(tt.input)
 		if got != tt.want {
-			t.Errorf("pluraliseType(%q) = %q, want %q", tt.input, got, tt.want)
+			t.Errorf("pluralizeType(%q) = %q, want %q", tt.input, got, tt.want)
 		}
 	}
 }

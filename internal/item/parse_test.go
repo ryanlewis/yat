@@ -139,7 +139,7 @@ title: "Unclosed"
 	}
 }
 
-func TestParse_EmptyStatusNormalisedToDraft(t *testing.T) {
+func TestParse_EmptyStatusNormalizedToDraft(t *testing.T) {
 	input := "---\nid: TK-001\ntitle: \"No status\"\n---\n\nBody.\n"
 	item, err := Parse([]byte(input), "test.md")
 	if err != nil {

@@ -74,6 +74,27 @@ yat graph         # dependency graph by layer
 | `status`       | `draft`, `in-progress`, or `done`           |
 | `phase`        | Grouping label for phased delivery          |
 
+## Mixing items with other markdown
+
+yat scans all `.md` files in the items directory. Files without frontmatter or without an `id` field are silently skipped, so plain markdown notes can coexist alongside items.
+
+To explicitly tell yat to skip a file that has frontmatter, add a `yat` directive:
+
+```markdown
+---
+title: "Sprint retro notes"
+yat: ignore
+---
+
+These notes won't be loaded by yat.
+```
+
+The `yat` field accepts a comma-delimited list of directives. Currently supported:
+
+| Directive | Effect                          |
+|-----------|---------------------------------|
+| `ignore`  | File is silently skipped by yat |
+
 ## Configuration
 
 | Flag / Env            | Default | Description                 |

@@ -55,8 +55,10 @@ func (c *CompleteCmd) Run(rc *RunContext) error {
 
 	if rc.JSON {
 		out := completeJSON{
-			ID:    it.ID,
-			Title: it.Title,
+			ID:           it.ID,
+			Title:        it.Title,
+			Unblocked:    []unblockedRef{},
+			StillBlocked: []blockedRef{},
 		}
 
 		for _, u := range unblocked {

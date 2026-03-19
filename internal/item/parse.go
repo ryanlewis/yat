@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strings"
 
 	"gopkg.in/yaml.v3"
 )
@@ -33,6 +34,10 @@ func ParseFile(path string) (*Item, error) {
 func Parse(data []byte, path string) (*Item, error) {
 	fm, body, ok := splitFrontmatter(data)
 	if !ok {
+		return nil, nil
+	}
+
+	if hasDirective(fm, "ignore") {
 		return nil, nil
 	}
 
@@ -71,6 +76,26 @@ func looksLikeItem(item *Item) bool {
 	return item.Status != "" || item.Type != "" || item.Priority != "" || len(item.Dependencies) > 0
 }
 
+// hasDirective checks whether the frontmatter contains a specific yat directive.
+// The yat field is a comma-delimited list of directives (e.g. "yat: ignore" or "yat: ignore, draft").
+func hasDirective(fm []byte, directive string) bool {
+	var meta struct {
+		Yat string `yaml:"yat"`
+	}
+
+	if err := yaml.Unmarshal(fm, &meta); err != nil || meta.Yat == "" {
+		return false
+	}
+
+	for _, d := range strings.Split(meta.Yat, ",") {
+		if strings.TrimSpace(d) == directive {
+			return true
+		}
+	}
+
+	return false
+}
+
 // splitFrontmatter splits file content at the opening and closing --- delimiters.
 // Returns the frontmatter bytes, body bytes, and whether a valid split was found.
 func splitFrontmatter(data []byte) (fm, body []byte, ok bool) {
@@ -87,6 +112,12 @@ func splitFrontmatter(data []byte) (fm, body []byte, ok bool) {
 	}
 	idx := bytes.Index(rest, []byte("\n---"))
 	if idx < 0 {
+		return nil, nil, false
+	}
+
+	// The closing --- must be on its own line (followed by newline, CR, or EOF).
+	afterClose := rest[idx+len("\n---"):]
+	if len(afterClose) > 0 && afterClose[0] != '\n' && afterClose[0] != '\r' {
 		return nil, nil, false
 	}
 

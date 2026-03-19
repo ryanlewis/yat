@@ -49,9 +49,11 @@ func (s *StatusCmd) Run(rc *RunContext) error {
 		case item.StatusInProgress:
 			ipCount++
 			ipPoints += it.Points
-		default:
+		case item.StatusDraft:
 			draftCount++
 			draftPoints += it.Points
+		default:
+			return fmt.Errorf("unexpected status %q for item %s", it.Status, it.ID)
 		}
 	}
 
@@ -107,10 +109,15 @@ func (s *StatusCmd) Run(rc *RunContext) error {
 	return nil
 }
 
-func pluraliseType(t string) string {
+func pluralizeType(t string) string {
 	lower := strings.ToLower(t)
-	if strings.HasSuffix(lower, "y") {
-		return lower[:len(lower)-1] + "ies"
+	if len(lower) >= 2 && lower[len(lower)-1] == 'y' {
+		// Only consonant+y gets -ies (e.g. story→stories).
+		// Vowel+y just gets -s (e.g. deploy→deploys).
+		beforeY := lower[len(lower)-2]
+		if beforeY != 'a' && beforeY != 'e' && beforeY != 'i' && beforeY != 'o' && beforeY != 'u' {
+			return lower[:len(lower)-1] + "ies"
+		}
 	}
 
 	return lower + "s"
@@ -122,7 +129,7 @@ func formatTypeCounts(byType map[string]int) []string {
 
 	for _, t := range order {
 		if c, ok := byType[t]; ok {
-			parts = append(parts, fmt.Sprintf("%d %s", c, pluraliseType(t)))
+			parts = append(parts, fmt.Sprintf("%d %s", c, pluralizeType(t)))
 		}
 	}
 
@@ -139,7 +146,7 @@ func formatTypeCounts(byType map[string]int) []string {
 		}
 
 		if !found {
-			parts = append(parts, fmt.Sprintf("%d %s", c, pluraliseType(t)))
+			parts = append(parts, fmt.Sprintf("%d %s", c, pluralizeType(t)))
 		}
 	}
 
