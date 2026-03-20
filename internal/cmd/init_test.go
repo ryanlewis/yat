@@ -236,6 +236,147 @@ func TestInitCmd_AlreadyInitialized_LocalYaml(t *testing.T) {
 	}
 }
 
+func TestInitCmd_AgentFiles_ClaudeMD(t *testing.T) {
+	dir := chdirTemp(t)
+
+	original := "# My Project\n\nSome existing content.\n"
+	os.WriteFile(filepath.Join(dir, "CLAUDE.md"), []byte(original), 0o644)
+
+	var buf bytes.Buffer
+	stdin := strings.NewReader("y\n")
+
+	cmd := &InitCmd{Dir: "spec"}
+	if err := cmd.Run(false, &buf, stdin); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+
+	out := buf.String()
+	if !strings.Contains(out, "append yat instructions to CLAUDE.md") {
+		t.Errorf("expected plan to mention CLAUDE.md, got:\n%s", out)
+	}
+	if !strings.Contains(out, "updated: CLAUDE.md") {
+		t.Errorf("expected result to mention CLAUDE.md, got:\n%s", out)
+	}
+
+	data, err := os.ReadFile(filepath.Join(dir, "CLAUDE.md"))
+	if err != nil {
+		t.Fatalf("reading CLAUDE.md: %v", err)
+	}
+
+	content := string(data)
+	if !strings.HasPrefix(content, original) {
+		t.Error("original content was not preserved")
+	}
+	if !strings.Contains(content, "## yat (issue tracker)") {
+		t.Error("expected yat instructions in CLAUDE.md")
+	}
+}
+
+func TestInitCmd_AgentFiles_AgentsMD(t *testing.T) {
+	dir := chdirTemp(t)
+
+	original := "# Agents\n"
+	os.WriteFile(filepath.Join(dir, "AGENTS.md"), []byte(original), 0o644)
+
+	var buf bytes.Buffer
+	stdin := strings.NewReader("y\n")
+
+	cmd := &InitCmd{Dir: "spec"}
+	if err := cmd.Run(false, &buf, stdin); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+
+	data, err := os.ReadFile(filepath.Join(dir, "AGENTS.md"))
+	if err != nil {
+		t.Fatalf("reading AGENTS.md: %v", err)
+	}
+
+	content := string(data)
+	if !strings.HasPrefix(content, original) {
+		t.Error("original content was not preserved")
+	}
+	if !strings.Contains(content, "## yat (issue tracker)") {
+		t.Error("expected yat instructions in AGENTS.md")
+	}
+}
+
+func TestInitCmd_AgentFiles_Both(t *testing.T) {
+	dir := chdirTemp(t)
+
+	os.WriteFile(filepath.Join(dir, "CLAUDE.md"), []byte("# Claude\n"), 0o644)
+	os.WriteFile(filepath.Join(dir, "AGENTS.md"), []byte("# Agents\n"), 0o644)
+
+	var buf bytes.Buffer
+	stdin := strings.NewReader("y\n")
+
+	cmd := &InitCmd{Dir: "items"}
+	if err := cmd.Run(false, &buf, stdin); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+
+	for _, name := range []string{"CLAUDE.md", "AGENTS.md"} {
+		data, err := os.ReadFile(filepath.Join(dir, name))
+		if err != nil {
+			t.Fatalf("reading %s: %v", name, err)
+		}
+		if !strings.Contains(string(data), "## yat (issue tracker)") {
+			t.Errorf("expected yat instructions in %s", name)
+		}
+	}
+}
+
+func TestInitCmd_AgentFiles_JSON(t *testing.T) {
+	dir := chdirTemp(t)
+
+	os.WriteFile(filepath.Join(dir, "CLAUDE.md"), []byte("# Claude\n"), 0o644)
+
+	var buf bytes.Buffer
+	stdin := strings.NewReader("y\n")
+
+	cmd := &InitCmd{Dir: "spec"}
+	if err := cmd.Run(true, &buf, stdin); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+
+	output := buf.String()
+	jsonStart := strings.LastIndex(output, "{")
+	if jsonStart < 0 {
+		t.Fatalf("no JSON found in output:\n%s", output)
+	}
+
+	var result initJSON
+	if err := json.Unmarshal([]byte(output[jsonStart:]), &result); err != nil {
+		t.Fatalf("JSON unmarshal: %v", err)
+	}
+
+	if len(result.AgentFiles) != 1 || result.AgentFiles[0] != "CLAUDE.md" {
+		t.Errorf("AgentFiles = %v, want [CLAUDE.md]", result.AgentFiles)
+	}
+}
+
+func TestInitCmd_AgentFiles_Declined(t *testing.T) {
+	dir := chdirTemp(t)
+
+	original := "# Claude\n"
+	os.WriteFile(filepath.Join(dir, "CLAUDE.md"), []byte(original), 0o644)
+
+	var buf bytes.Buffer
+	stdin := strings.NewReader("n\n")
+
+	cmd := &InitCmd{Dir: "spec"}
+	if err := cmd.Run(false, &buf, stdin); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+
+	data, err := os.ReadFile(filepath.Join(dir, "CLAUDE.md"))
+	if err != nil {
+		t.Fatalf("reading CLAUDE.md: %v", err)
+	}
+	if string(data) != original {
+		t.Errorf("CLAUDE.md was modified after decline: %q", string(data))
+	}
+}
+
 func TestPromptDir_Default(t *testing.T) {
 	var buf bytes.Buffer
 	scanner := bufio.NewScanner(strings.NewReader("\n"))

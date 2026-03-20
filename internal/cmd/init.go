@@ -19,11 +19,22 @@ type InitCmd struct {
 }
 
 type initJSON struct {
-	ConfigFile string `json:"config_file"`
-	Dir        string `json:"dir"`
-	Created    bool   `json:"created"`
-	SampleItem string `json:"sample_item,omitempty"`
+	ConfigFile string   `json:"config_file"`
+	Dir        string   `json:"dir"`
+	Created    bool     `json:"created"`
+	SampleItem string   `json:"sample_item,omitempty"`
+	AgentFiles []string `json:"agent_files,omitempty"`
 }
+
+var agentMDFiles = []string{"CLAUDE.md", "AGENTS.md"}
+
+const agentInstructions = `
+## yat (issue tracker)
+
+Useful commands: yat ready, yat next, yat status, yat show <id>, yat start <id>, yat complete <id>
+
+Config: .yat.yaml
+`
 
 const (
 	defaultDir                      = "spec"
@@ -50,6 +61,7 @@ type initPlan struct {
 	createSample bool
 	samplePath   string
 	mdCount      int
+	agentFiles   []string
 }
 
 // Run executes the init command. It takes jsonMode, stdout, and stdin directly
@@ -107,6 +119,12 @@ func buildInitPlan(dir string) initPlan {
 
 	p.createSample = p.mdCount == 0
 
+	for _, name := range agentMDFiles {
+		if _, err := os.Stat(name); err == nil {
+			p.agentFiles = append(p.agentFiles, name)
+		}
+	}
+
 	return p
 }
 
@@ -124,6 +142,10 @@ func printPlan(stdout io.Writer, p initPlan) {
 
 	if p.createSample {
 		fmt.Fprintf(stdout, "  create %s\n", p.samplePath)
+	}
+
+	for _, f := range p.agentFiles {
+		fmt.Fprintf(stdout, "  append yat instructions to %s\n", f)
 	}
 }
 
@@ -156,6 +178,30 @@ func executePlan(p initPlan) error {
 		return fmt.Errorf("writing %s: %w", config.DefaultConfigFile, writeErr)
 	}
 
+	for _, af := range p.agentFiles {
+		if err := appendAgentInstructions(af); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func appendAgentInstructions(path string) error {
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_APPEND, initFilePermissions)
+	if err != nil {
+		return fmt.Errorf("opening %s: %w", path, err)
+	}
+
+	_, writeErr := f.WriteString(agentInstructions)
+	if closeErr := f.Close(); writeErr == nil {
+		writeErr = closeErr
+	}
+
+	if writeErr != nil {
+		return fmt.Errorf("writing to %s: %w", path, writeErr)
+	}
+
 	return nil
 }
 
@@ -165,6 +211,7 @@ func printResult(jsonMode bool, stdout io.Writer, p initPlan) error {
 			ConfigFile: config.DefaultConfigFile,
 			Dir:        p.dir,
 			Created:    p.createDir,
+			AgentFiles: p.agentFiles,
 		}
 		if p.createSample {
 			result.SampleItem = p.samplePath
@@ -187,6 +234,10 @@ func printResult(jsonMode bool, stdout io.Writer, p initPlan) error {
 
 	if p.createSample {
 		fmt.Fprintf(stdout, "  example: %s\n", p.samplePath)
+	}
+
+	for _, f := range p.agentFiles {
+		fmt.Fprintf(stdout, "  updated: %s\n", f)
 	}
 
 	return nil
