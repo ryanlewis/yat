@@ -27,6 +27,11 @@ type cli struct {
 func main() {
 	var c cli
 
+	if len(os.Args) < 2 {
+		fmt.Fprintf(os.Stderr, "yat: no command given. Run 'yat --help' for usage.\n")
+		os.Exit(0)
+	}
+
 	ctx := kong.Parse(&c,
 		kong.Name("yat"),
 		kong.Description("YAML tracker — a lightweight CLI for issue tracking with YAML.\n\n"+
