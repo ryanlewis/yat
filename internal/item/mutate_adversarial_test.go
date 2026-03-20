@@ -7,12 +7,14 @@ import (
 	"testing"
 )
 
+const testDraftFrontmatter = "---\nid: TK-001\nstatus: draft\n---\n"
+
 // --- SetStatus adversarial tests ---
 
 func TestSetStatus_EmptyStringStatus(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "test.md")
-	os.WriteFile(path, []byte("---\nid: TK-001\nstatus: draft\n---\n"), 0o644)
+	os.WriteFile(path, []byte(testDraftFrontmatter), 0o644)
 
 	err := SetStatus(path, Status(""))
 	if err == nil {
@@ -44,7 +46,7 @@ func TestSetStatus_NoFrontmatter(t *testing.T) {
 func TestSetStatus_ReadOnlyFile(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "readonly.md")
-	os.WriteFile(path, []byte("---\nid: TK-001\nstatus: draft\n---\n"), 0o644)
+	os.WriteFile(path, []byte(testDraftFrontmatter), 0o644)
 	os.Chmod(path, 0o444)
 	t.Cleanup(func() { os.Chmod(path, 0o644) })
 
@@ -166,7 +168,7 @@ func TestSetStatus_Idempotent(t *testing.T) {
 
 func TestSetStatus_LargeBody(t *testing.T) {
 	body := strings.Repeat("This is a very long line of text. ", 1000)
-	content := "---\nid: TK-001\nstatus: draft\n---\n" + body + "\n"
+	content := testDraftFrontmatter + body + "\n"
 	dir := t.TempDir()
 	path := filepath.Join(dir, "test.md")
 	os.WriteFile(path, []byte(content), 0o644)
@@ -203,10 +205,9 @@ func TestSetStatus_UnicodeBody(t *testing.T) {
 }
 
 func TestSetStatus_EmptyBody(t *testing.T) {
-	content := "---\nid: TK-001\nstatus: draft\n---\n"
 	dir := t.TempDir()
 	path := filepath.Join(dir, "test.md")
-	os.WriteFile(path, []byte(content), 0o644)
+	os.WriteFile(path, []byte(testDraftFrontmatter), 0o644)
 
 	if err := SetStatus(path, StatusDone); err != nil {
 		t.Fatalf("SetStatus: %v", err)

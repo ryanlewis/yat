@@ -9,6 +9,8 @@ import (
 	"testing"
 )
 
+const testItemID = "TK-001"
+
 // TestMain builds the yat binary once before all e2e tests.
 func TestMain(m *testing.M) {
 	if err := exec.Command("go", "build", "-o", "yat_test_bin", ".").Run(); err != nil {
@@ -143,9 +145,12 @@ func TestE2E_Help(t *testing.T) {
 func TestE2E_NoArgs(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
-	_, _, code := run(t, dir)
-	if code == 0 {
-		t.Error("expected non-zero exit for no subcommand")
+	_, stderr, code := run(t, dir)
+	if code != 0 {
+		t.Errorf("expected exit 0 for no subcommand, got %d", code)
+	}
+	if !strings.Contains(stderr, "yat --help") {
+		t.Error("expected hint to run --help")
 	}
 }
 
@@ -202,7 +207,7 @@ func TestE2E_Ready_Text(t *testing.T) {
 		t.Fatalf("exit code = %d", code)
 	}
 	// Only TK-001 has no deps
-	if !strings.Contains(stdout, "TK-001") {
+	if !strings.Contains(stdout, testItemID) {
 		t.Errorf("expected TK-001 in ready, got:\n%s", stdout)
 	}
 	if strings.Contains(stdout, "TK-002") || strings.Contains(stdout, "ST-001") {
@@ -225,7 +230,7 @@ func TestE2E_Ready_JSON(t *testing.T) {
 	if len(result) != 1 {
 		t.Fatalf("expected 1 ready item, got %d", len(result))
 	}
-	if result[0]["id"] != "TK-001" {
+	if result[0]["id"] != testItemID {
 		t.Errorf("id = %v, want TK-001", result[0]["id"])
 	}
 }
@@ -254,7 +259,7 @@ func TestE2E_Next_Text(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("exit code = %d", code)
 	}
-	if !strings.Contains(stdout, "TK-001") {
+	if !strings.Contains(stdout, testItemID) {
 		t.Errorf("expected TK-001, got:\n%s", stdout)
 	}
 	if !strings.Contains(stdout, "Acceptance Criteria") {
@@ -274,7 +279,7 @@ func TestE2E_Next_JSON(t *testing.T) {
 	if err := json.Unmarshal([]byte(stdout), &result); err != nil {
 		t.Fatalf("invalid JSON: %v", err)
 	}
-	if result["id"] != "TK-001" {
+	if result["id"] != testItemID {
 		t.Errorf("id = %v, want TK-001", result["id"])
 	}
 }
@@ -291,7 +296,7 @@ func TestE2E_Show_Text(t *testing.T) {
 	if !strings.Contains(stdout, "TK-002") || !strings.Contains(stdout, "Add linting") {
 		t.Errorf("expected item details, got:\n%s", stdout)
 	}
-	if !strings.Contains(stdout, "TK-001") {
+	if !strings.Contains(stdout, testItemID) {
 		t.Errorf("expected dependency TK-001 listed, got:\n%s", stdout)
 	}
 }
@@ -344,7 +349,7 @@ func TestE2E_Blocked_Text(t *testing.T) {
 	if !strings.Contains(stdout, "ST-001") {
 		t.Errorf("expected ST-001 blocked, got:\n%s", stdout)
 	}
-	if !strings.Contains(stdout, "TK-001") {
+	if !strings.Contains(stdout, testItemID) {
 		t.Errorf("expected 'waiting on TK-001', got:\n%s", stdout)
 	}
 }
@@ -410,7 +415,7 @@ func TestE2E_Graph_JSON(t *testing.T) {
 func TestE2E_Start_Text(t *testing.T) {
 	t.Parallel()
 	dir := setupProject(t)
-	stdout, _, code := run(t, dir, "start", "TK-001")
+	stdout, _, code := run(t, dir, "start", testItemID)
 	if code != 0 {
 		t.Fatalf("exit code = %d", code)
 	}
@@ -431,7 +436,7 @@ func TestE2E_Start_Text(t *testing.T) {
 func TestE2E_Start_JSON(t *testing.T) {
 	t.Parallel()
 	dir := setupProject(t)
-	stdout, _, code := run(t, dir, "start", "TK-001", "--json")
+	stdout, _, code := run(t, dir, "start", testItemID, "--json")
 	if code != 0 {
 		t.Fatalf("exit code = %d", code)
 	}
@@ -440,7 +445,7 @@ func TestE2E_Start_JSON(t *testing.T) {
 	if err := json.Unmarshal([]byte(stdout), &result); err != nil {
 		t.Fatalf("invalid JSON: %v", err)
 	}
-	if result["id"] != "TK-001" {
+	if result["id"] != testItemID {
 		t.Errorf("id = %v, want TK-001", result["id"])
 	}
 }
@@ -474,7 +479,7 @@ func TestE2E_Start_NotFound(t *testing.T) {
 func TestE2E_Complete_Text(t *testing.T) {
 	t.Parallel()
 	dir := setupProject(t)
-	stdout, _, code := run(t, dir, "complete", "TK-001")
+	stdout, _, code := run(t, dir, "complete", testItemID)
 	if code != 0 {
 		t.Fatalf("exit code = %d", code)
 	}
@@ -499,7 +504,7 @@ func TestE2E_Complete_Text(t *testing.T) {
 func TestE2E_Complete_JSON(t *testing.T) {
 	t.Parallel()
 	dir := setupProject(t)
-	stdout, _, code := run(t, dir, "complete", "TK-001", "--json")
+	stdout, _, code := run(t, dir, "complete", testItemID, "--json")
 	if code != 0 {
 		t.Fatalf("exit code = %d", code)
 	}
@@ -508,7 +513,7 @@ func TestE2E_Complete_JSON(t *testing.T) {
 	if err := json.Unmarshal([]byte(stdout), &result); err != nil {
 		t.Fatalf("invalid JSON: %v", err)
 	}
-	if result["id"] != "TK-001" {
+	if result["id"] != testItemID {
 		t.Errorf("id = %v, want TK-001", result["id"])
 	}
 	unblocked := result["unblocked"].([]any)
@@ -521,9 +526,9 @@ func TestE2E_Complete_AlreadyDone(t *testing.T) {
 	t.Parallel()
 	dir := setupProject(t)
 	// Complete TK-001 first
-	run(t, dir, "complete", "TK-001")
+	run(t, dir, "complete", testItemID)
 	// Try again
-	_, stderr, code := run(t, dir, "complete", "TK-001")
+	_, stderr, code := run(t, dir, "complete", testItemID)
 	if code == 0 {
 		t.Fatal("expected non-zero exit for already-done item")
 	}
@@ -535,7 +540,7 @@ func TestE2E_Complete_AlreadyDone(t *testing.T) {
 func TestE2E_Complete_StillBlocked(t *testing.T) {
 	t.Parallel()
 	dir := setupProject(t)
-	stdout, _, code := run(t, dir, "complete", "TK-001")
+	stdout, _, code := run(t, dir, "complete", testItemID)
 	if code != 0 {
 		t.Fatalf("exit code = %d", code)
 	}
@@ -555,7 +560,7 @@ func TestE2E_Workflow_StartThenComplete(t *testing.T) {
 	dir := setupProject(t)
 
 	// Start TK-001
-	stdout, _, code := run(t, dir, "start", "TK-001")
+	stdout, _, code := run(t, dir, "start", testItemID)
 	if code != 0 {
 		t.Fatalf("start exit code = %d", code)
 	}
@@ -576,7 +581,7 @@ func TestE2E_Workflow_StartThenComplete(t *testing.T) {
 	}
 
 	// Complete TK-001
-	stdout, _, code = run(t, dir, "complete", "TK-001")
+	stdout, _, code = run(t, dir, "complete", testItemID)
 	if code != 0 {
 		t.Fatalf("complete exit code = %d", code)
 	}
@@ -602,7 +607,7 @@ func TestE2E_Workflow_CompleteAll(t *testing.T) {
 	dir := setupProject(t)
 
 	// Complete TK-001 → TK-002 unblocked
-	run(t, dir, "complete", "TK-001")
+	run(t, dir, "complete", testItemID)
 	// Complete TK-002 → ST-001 unblocked
 	run(t, dir, "complete", "TK-002")
 	// Complete ST-001
