@@ -13,6 +13,7 @@ type cli struct {
 	Dir  string `help:"Path to items directory (overrides .yat.yaml)." type:"path" env:"YAT_DIR"`
 	JSON bool   `help:"Output as JSON." short:"j"`
 
+	Init     cmd.InitCmd     `cmd:"" help:"Initialize a new yat project in the current directory."`
 	Ready    cmd.ReadyCmd    `cmd:"" help:"Show items ready to work on."`
 	Next     cmd.NextCmd     `cmd:"" help:"Show the highest-priority ready item."`
 	Show     cmd.ShowCmd     `cmd:"" help:"Show an item by ID."`
@@ -34,6 +35,14 @@ func main() {
 			"Add \"yat: ignore\" to frontmatter to explicitly exclude a file."),
 		kong.UsageOnError(),
 	)
+
+	if ctx.Command() == "init" || ctx.Command() == "init <dir>" {
+		if err := c.Init.Run(c.JSON, os.Stdout, os.Stdin); err != nil {
+			fmt.Fprintf(os.Stderr, "error: %v\n", err)
+			os.Exit(1)
+		}
+		os.Exit(0)
+	}
 
 	dir := c.Dir
 	if dir == "" {

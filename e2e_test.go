@@ -14,14 +14,20 @@ func TestMain(m *testing.M) {
 	if err := exec.Command("go", "build", "-o", "yat_test_bin", ".").Run(); err != nil {
 		panic("failed to build yat binary: " + err.Error())
 	}
+	abs, err := filepath.Abs("yat_test_bin")
+	if err != nil {
+		panic("failed to resolve yat binary path: " + err.Error())
+	}
+	yatBinPath = abs
 	code := m.Run()
 	os.Remove("yat_test_bin")
 	os.Exit(code)
 }
 
+var yatBinPath string
+
 func yatBin() string {
-	abs, _ := filepath.Abs("yat_test_bin")
-	return abs
+	return yatBinPath
 }
 
 // run executes yat with the given args and returns stdout, stderr, and exit code.
@@ -118,6 +124,7 @@ Implement basic auth flow.
 // --- Help and flags ---
 
 func TestE2E_Help(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	stdout, _, code := run(t, dir, "--help")
 	if code != 0 {
@@ -134,6 +141,7 @@ func TestE2E_Help(t *testing.T) {
 }
 
 func TestE2E_NoArgs(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	_, _, code := run(t, dir)
 	if code == 0 {
@@ -142,6 +150,7 @@ func TestE2E_NoArgs(t *testing.T) {
 }
 
 func TestE2E_UnknownCommand(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	_, _, code := run(t, dir, "bogus")
 	if code == 0 {
@@ -152,6 +161,7 @@ func TestE2E_UnknownCommand(t *testing.T) {
 // --- Status command ---
 
 func TestE2E_Status_Text(t *testing.T) {
+	t.Parallel()
 	dir := setupProject(t)
 	stdout, _, code := run(t, dir, "status")
 	if code != 0 {
@@ -166,6 +176,7 @@ func TestE2E_Status_Text(t *testing.T) {
 }
 
 func TestE2E_Status_JSON(t *testing.T) {
+	t.Parallel()
 	dir := setupProject(t)
 	stdout, _, code := run(t, dir, "status", "--json")
 	if code != 0 {
@@ -184,6 +195,7 @@ func TestE2E_Status_JSON(t *testing.T) {
 // --- Ready command ---
 
 func TestE2E_Ready_Text(t *testing.T) {
+	t.Parallel()
 	dir := setupProject(t)
 	stdout, _, code := run(t, dir, "ready")
 	if code != 0 {
@@ -199,6 +211,7 @@ func TestE2E_Ready_Text(t *testing.T) {
 }
 
 func TestE2E_Ready_JSON(t *testing.T) {
+	t.Parallel()
 	dir := setupProject(t)
 	stdout, _, code := run(t, dir, "ready", "-j")
 	if code != 0 {
@@ -218,6 +231,7 @@ func TestE2E_Ready_JSON(t *testing.T) {
 }
 
 func TestE2E_Ready_EmptyDir(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	items := filepath.Join(dir, "spec")
 	os.MkdirAll(items, 0o755)
@@ -234,6 +248,7 @@ func TestE2E_Ready_EmptyDir(t *testing.T) {
 // --- Next command ---
 
 func TestE2E_Next_Text(t *testing.T) {
+	t.Parallel()
 	dir := setupProject(t)
 	stdout, _, code := run(t, dir, "next")
 	if code != 0 {
@@ -248,6 +263,7 @@ func TestE2E_Next_Text(t *testing.T) {
 }
 
 func TestE2E_Next_JSON(t *testing.T) {
+	t.Parallel()
 	dir := setupProject(t)
 	stdout, _, code := run(t, dir, "next", "--json")
 	if code != 0 {
@@ -266,6 +282,7 @@ func TestE2E_Next_JSON(t *testing.T) {
 // --- Show command ---
 
 func TestE2E_Show_Text(t *testing.T) {
+	t.Parallel()
 	dir := setupProject(t)
 	stdout, _, code := run(t, dir, "show", "TK-002")
 	if code != 0 {
@@ -280,6 +297,7 @@ func TestE2E_Show_Text(t *testing.T) {
 }
 
 func TestE2E_Show_JSON(t *testing.T) {
+	t.Parallel()
 	dir := setupProject(t)
 	stdout, _, code := run(t, dir, "show", "ST-001", "--json")
 	if code != 0 {
@@ -300,6 +318,7 @@ func TestE2E_Show_JSON(t *testing.T) {
 }
 
 func TestE2E_Show_NotFound(t *testing.T) {
+	t.Parallel()
 	dir := setupProject(t)
 	_, stderr, code := run(t, dir, "show", "GHOST")
 	if code == 0 {
@@ -313,6 +332,7 @@ func TestE2E_Show_NotFound(t *testing.T) {
 // --- Blocked command ---
 
 func TestE2E_Blocked_Text(t *testing.T) {
+	t.Parallel()
 	dir := setupProject(t)
 	stdout, _, code := run(t, dir, "blocked")
 	if code != 0 {
@@ -330,6 +350,7 @@ func TestE2E_Blocked_Text(t *testing.T) {
 }
 
 func TestE2E_Blocked_JSON(t *testing.T) {
+	t.Parallel()
 	dir := setupProject(t)
 	stdout, _, code := run(t, dir, "blocked", "--json")
 	if code != 0 {
@@ -348,6 +369,7 @@ func TestE2E_Blocked_JSON(t *testing.T) {
 // --- Graph command ---
 
 func TestE2E_Graph_Text(t *testing.T) {
+	t.Parallel()
 	dir := setupProject(t)
 	stdout, _, code := run(t, dir, "graph")
 	if code != 0 {
@@ -362,6 +384,7 @@ func TestE2E_Graph_Text(t *testing.T) {
 }
 
 func TestE2E_Graph_JSON(t *testing.T) {
+	t.Parallel()
 	dir := setupProject(t)
 	stdout, _, code := run(t, dir, "graph", "--json")
 	if code != 0 {
@@ -385,6 +408,7 @@ func TestE2E_Graph_JSON(t *testing.T) {
 // --- Start command ---
 
 func TestE2E_Start_Text(t *testing.T) {
+	t.Parallel()
 	dir := setupProject(t)
 	stdout, _, code := run(t, dir, "start", "TK-001")
 	if code != 0 {
@@ -395,13 +419,17 @@ func TestE2E_Start_Text(t *testing.T) {
 	}
 
 	// Verify file was updated
-	data, _ := os.ReadFile(filepath.Join(dir, "spec", "tk-001.md"))
+	data, err := os.ReadFile(filepath.Join(dir, "spec", "tk-001.md"))
+	if err != nil {
+		t.Fatalf("reading item file: %v", err)
+	}
 	if !strings.Contains(string(data), "status: in-progress") {
 		t.Error("file not updated to in-progress")
 	}
 }
 
 func TestE2E_Start_JSON(t *testing.T) {
+	t.Parallel()
 	dir := setupProject(t)
 	stdout, _, code := run(t, dir, "start", "TK-001", "--json")
 	if code != 0 {
@@ -418,6 +446,7 @@ func TestE2E_Start_JSON(t *testing.T) {
 }
 
 func TestE2E_Start_Blocked(t *testing.T) {
+	t.Parallel()
 	dir := setupProject(t)
 	_, stderr, code := run(t, dir, "start", "TK-002")
 	if code == 0 {
@@ -429,6 +458,7 @@ func TestE2E_Start_Blocked(t *testing.T) {
 }
 
 func TestE2E_Start_NotFound(t *testing.T) {
+	t.Parallel()
 	dir := setupProject(t)
 	_, stderr, code := run(t, dir, "start", "GHOST")
 	if code == 0 {
@@ -442,6 +472,7 @@ func TestE2E_Start_NotFound(t *testing.T) {
 // --- Complete command ---
 
 func TestE2E_Complete_Text(t *testing.T) {
+	t.Parallel()
 	dir := setupProject(t)
 	stdout, _, code := run(t, dir, "complete", "TK-001")
 	if code != 0 {
@@ -456,13 +487,17 @@ func TestE2E_Complete_Text(t *testing.T) {
 	}
 
 	// Verify file was updated
-	data, _ := os.ReadFile(filepath.Join(dir, "spec", "tk-001.md"))
+	data, err := os.ReadFile(filepath.Join(dir, "spec", "tk-001.md"))
+	if err != nil {
+		t.Fatalf("reading item file: %v", err)
+	}
 	if !strings.Contains(string(data), "status: done") {
 		t.Error("file not updated to done")
 	}
 }
 
 func TestE2E_Complete_JSON(t *testing.T) {
+	t.Parallel()
 	dir := setupProject(t)
 	stdout, _, code := run(t, dir, "complete", "TK-001", "--json")
 	if code != 0 {
@@ -483,6 +518,7 @@ func TestE2E_Complete_JSON(t *testing.T) {
 }
 
 func TestE2E_Complete_AlreadyDone(t *testing.T) {
+	t.Parallel()
 	dir := setupProject(t)
 	// Complete TK-001 first
 	run(t, dir, "complete", "TK-001")
@@ -497,6 +533,7 @@ func TestE2E_Complete_AlreadyDone(t *testing.T) {
 }
 
 func TestE2E_Complete_StillBlocked(t *testing.T) {
+	t.Parallel()
 	dir := setupProject(t)
 	stdout, _, code := run(t, dir, "complete", "TK-001")
 	if code != 0 {
@@ -514,6 +551,7 @@ func TestE2E_Complete_StillBlocked(t *testing.T) {
 // --- Workflow: start then complete ---
 
 func TestE2E_Workflow_StartThenComplete(t *testing.T) {
+	t.Parallel()
 	dir := setupProject(t)
 
 	// Start TK-001
@@ -528,7 +566,9 @@ func TestE2E_Workflow_StartThenComplete(t *testing.T) {
 	// Status should show in-progress
 	stdout, _, _ = run(t, dir, "status", "--json")
 	var status map[string]any
-	json.Unmarshal([]byte(stdout), &status)
+	if err := json.Unmarshal([]byte(stdout), &status); err != nil {
+		t.Fatalf("invalid JSON: %v\n%s", err, stdout)
+	}
 	ip := status["in_progress"].(map[string]any)
 	if ip["count"].(float64) != 1 {
 		t.Errorf("in_progress count = %v, want 1", ip["count"])
@@ -546,7 +586,9 @@ func TestE2E_Workflow_StartThenComplete(t *testing.T) {
 	// TK-002 should now be ready
 	stdout, _, _ = run(t, dir, "ready", "--json")
 	var ready []map[string]any
-	json.Unmarshal([]byte(stdout), &ready)
+	if err := json.Unmarshal([]byte(stdout), &ready); err != nil {
+		t.Fatalf("invalid JSON: %v\n%s", err, stdout)
+	}
 	if len(ready) != 1 || ready[0]["id"] != "TK-002" {
 		t.Errorf("expected TK-002 ready, got: %v", ready)
 	}
@@ -555,6 +597,7 @@ func TestE2E_Workflow_StartThenComplete(t *testing.T) {
 // --- Full workflow: complete everything ---
 
 func TestE2E_Workflow_CompleteAll(t *testing.T) {
+	t.Parallel()
 	dir := setupProject(t)
 
 	// Complete TK-001 → TK-002 unblocked
@@ -577,7 +620,9 @@ func TestE2E_Workflow_CompleteAll(t *testing.T) {
 
 	stdout, _, _ = run(t, dir, "status", "--json")
 	var status map[string]any
-	json.Unmarshal([]byte(stdout), &status)
+	if err := json.Unmarshal([]byte(stdout), &status); err != nil {
+		t.Fatalf("invalid JSON: %v\n%s", err, stdout)
+	}
 	done := status["done"].(map[string]any)
 	if done["count"].(float64) != 3 {
 		t.Errorf("done count = %v, want 3", done["count"])
@@ -587,6 +632,7 @@ func TestE2E_Workflow_CompleteAll(t *testing.T) {
 // --- --dir flag ---
 
 func TestE2E_DirFlag(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	custom := filepath.Join(dir, "custom-items")
 	os.MkdirAll(custom, 0o755)
@@ -603,6 +649,7 @@ func TestE2E_DirFlag(t *testing.T) {
 }
 
 func TestE2E_DirFlag_Nonexistent(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	_, stderr, code := run(t, dir, "--dir", "/nonexistent/path", "status")
 	if code == 0 {
@@ -614,6 +661,7 @@ func TestE2E_DirFlag_Nonexistent(t *testing.T) {
 }
 
 func TestE2E_YAT_DIR_Env(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	custom := filepath.Join(dir, "env-items")
 	os.MkdirAll(custom, 0o755)
@@ -635,6 +683,7 @@ func TestE2E_YAT_DIR_Env(t *testing.T) {
 // --- Error cases ---
 
 func TestE2E_DuplicateIDs(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	items := filepath.Join(dir, "spec")
 	os.MkdirAll(items, 0o755)
@@ -652,6 +701,7 @@ func TestE2E_DuplicateIDs(t *testing.T) {
 }
 
 func TestE2E_CyclicDeps(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	items := filepath.Join(dir, "spec")
 	os.MkdirAll(items, 0o755)
@@ -669,6 +719,7 @@ func TestE2E_CyclicDeps(t *testing.T) {
 }
 
 func TestE2E_InvalidStatus(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	items := filepath.Join(dir, "spec")
 	os.MkdirAll(items, 0o755)
@@ -685,6 +736,7 @@ func TestE2E_InvalidStatus(t *testing.T) {
 }
 
 func TestE2E_UnknownDependency(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	items := filepath.Join(dir, "spec")
 	os.MkdirAll(items, 0o755)
@@ -703,6 +755,7 @@ func TestE2E_UnknownDependency(t *testing.T) {
 // --- Noise files are ignored ---
 
 func TestE2E_NoiseFilesIgnored(t *testing.T) {
+	t.Parallel()
 	dir := setupProject(t)
 	items := filepath.Join(dir, "spec")
 
@@ -718,7 +771,9 @@ func TestE2E_NoiseFilesIgnored(t *testing.T) {
 	}
 
 	var result map[string]any
-	json.Unmarshal([]byte(stdout), &result)
+	if err := json.Unmarshal([]byte(stdout), &result); err != nil {
+		t.Fatalf("invalid JSON: %v\n%s", err, stdout)
+	}
 	if result["total_items"].(float64) != 3 {
 		t.Errorf("total_items = %v, want 3 (noise should be ignored)", result["total_items"])
 	}
@@ -727,6 +782,7 @@ func TestE2E_NoiseFilesIgnored(t *testing.T) {
 // --- ErrMissingID warning goes to stderr ---
 
 func TestE2E_MissingIDWarning(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	items := filepath.Join(dir, "spec")
 	os.MkdirAll(items, 0o755)
@@ -751,6 +807,7 @@ func TestE2E_MissingIDWarning(t *testing.T) {
 // --- Short flag -j ---
 
 func TestE2E_ShortJSONFlag(t *testing.T) {
+	t.Parallel()
 	dir := setupProject(t)
 	stdout, _, code := run(t, dir, "status", "-j")
 	if code != 0 {

@@ -17,10 +17,13 @@ type Config struct {
 	Dir string `yaml:"dir"`
 }
 
-// configNames lists config file variants in priority order. Local overrides
+// DefaultConfigFile is the primary config file name written by `yat init`.
+const DefaultConfigFile = ".yat.yaml"
+
+// ConfigNames lists config file variants in priority order. Local overrides
 // are checked first so that per-machine settings (potentially gitignored)
 // take precedence over shared project config.
-var configNames = []string{".yat.local.yaml", ".yat.local.yml", ".yat.yaml", ".yat.yml"}
+var ConfigNames = []string{".yat.local.yaml", ".yat.local.yml", DefaultConfigFile, ".yat.yml"}
 
 // Load searches for a yat config file starting from the current directory and
 // walking up to the filesystem root. At each level it checks .yat.local.yaml,
@@ -33,7 +36,7 @@ func Load() (Config, error) {
 	}
 
 	for {
-		for _, name := range configNames {
+		for _, name := range ConfigNames {
 			data, readErr := os.ReadFile(filepath.Join(dir, name))
 			if readErr != nil {
 				if errors.Is(readErr, fs.ErrNotExist) {
