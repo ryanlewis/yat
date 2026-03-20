@@ -181,6 +181,38 @@ func TestShowCmd_JSON(t *testing.T) {
 	}
 }
 
+// --- ReadOnly ---
+
+func TestStartCmd_ReadOnly(t *testing.T) {
+	items := makeTestItems()
+	rc, _ := newTestContext(t, items, false)
+	rc.ReadOnly = true
+
+	cmd := &StartCmd{ID: "TK-003"}
+	err := cmd.Run(rc)
+	if err == nil {
+		t.Fatal("expected error for read-only project")
+	}
+	if !strings.Contains(err.Error(), "read-only") {
+		t.Errorf("expected 'read-only' in error, got: %v", err)
+	}
+}
+
+func TestCompleteCmd_ReadOnly(t *testing.T) {
+	items := makeTestItems()
+	rc, _ := newTestContext(t, items, false)
+	rc.ReadOnly = true
+
+	cmd := &CompleteCmd{ID: "TK-001"}
+	err := cmd.Run(rc)
+	if err == nil {
+		t.Fatal("expected error for read-only project")
+	}
+	if !strings.Contains(err.Error(), "read-only") {
+		t.Errorf("expected 'read-only' in error, got: %v", err)
+	}
+}
+
 // --- StartCmd ---
 
 func TestStartCmd_Blocked(t *testing.T) {
@@ -676,7 +708,7 @@ func TestNewRunContext_Valid(t *testing.T) {
 	writeItemFile(t, dir, "tk-001.md", "---\nid: TK-001\ntitle: \"Task\"\nstatus: draft\n---\n")
 	writeItemFile(t, dir, "tk-002.md", "---\nid: TK-002\ntitle: \"Task 2\"\nstatus: draft\ndependencies: [TK-001]\n---\n")
 
-	rc, err := NewRunContext(dir, false)
+	rc, err := NewRunContext(dir, false, false)
 	if err != nil {
 		t.Fatalf("NewRunContext: %v", err)
 	}
@@ -693,7 +725,7 @@ func TestNewRunContext_DuplicateIDs(t *testing.T) {
 	writeItemFile(t, dir, "a.md", "---\nid: TK-001\ntitle: \"First\"\nstatus: draft\n---\n")
 	writeItemFile(t, dir, "b.md", "---\nid: TK-001\ntitle: \"Duplicate\"\nstatus: draft\n---\n")
 
-	_, err := NewRunContext(dir, false)
+	_, err := NewRunContext(dir, false, false)
 	if err == nil {
 		t.Fatal("expected error for duplicate IDs")
 	}
@@ -707,7 +739,7 @@ func TestNewRunContext_CyclicDeps(t *testing.T) {
 	writeItemFile(t, dir, "a.md", "---\nid: TK-001\ntitle: \"A\"\nstatus: draft\ndependencies: [TK-002]\n---\n")
 	writeItemFile(t, dir, "b.md", "---\nid: TK-002\ntitle: \"B\"\nstatus: draft\ndependencies: [TK-001]\n---\n")
 
-	_, err := NewRunContext(dir, false)
+	_, err := NewRunContext(dir, false, false)
 	if err == nil {
 		t.Fatal("expected error for cyclic dependencies")
 	}
@@ -719,7 +751,7 @@ func TestNewRunContext_CyclicDeps(t *testing.T) {
 func TestNewRunContext_EmptyDir(t *testing.T) {
 	dir := t.TempDir()
 
-	rc, err := NewRunContext(dir, false)
+	rc, err := NewRunContext(dir, false, false)
 	if err != nil {
 		t.Fatalf("NewRunContext: %v", err)
 	}

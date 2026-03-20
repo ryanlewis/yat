@@ -493,7 +493,7 @@ func TestNewRunContext_InvalidStatus(t *testing.T) {
 	dir := t.TempDir()
 	writeItemFile(t, dir, "bad.md", "---\nid: BAD\nstatus: invalid\n---\n")
 
-	_, err := NewRunContext(dir, false)
+	_, err := NewRunContext(dir, false, false)
 	if err == nil {
 		t.Fatal("expected error for invalid status")
 	}
@@ -503,7 +503,7 @@ func TestNewRunContext_UnknownDependency(t *testing.T) {
 	dir := t.TempDir()
 	writeItemFile(t, dir, "a.md", "---\nid: A\nstatus: draft\ndependencies: [GHOST]\n---\n")
 
-	_, err := NewRunContext(dir, false)
+	_, err := NewRunContext(dir, false, false)
 	if err == nil {
 		t.Fatal("expected error for unknown dependency")
 	}
@@ -520,7 +520,7 @@ func TestNewRunContext_MixedValid(t *testing.T) {
 	// Non-item markdown
 	writeItemFile(t, dir, "readme.md", "# Readme\nNot an item.\n")
 
-	rc, err := NewRunContext(dir, false)
+	rc, err := NewRunContext(dir, false, false)
 	if err != nil {
 		t.Fatalf("NewRunContext: %v", err)
 	}
@@ -538,7 +538,7 @@ func TestNewRunContext_SubdirWithMixedContent(t *testing.T) {
 	writeItemFile(t, sub, "child.md", "---\nid: CHILD\nstatus: draft\ndependencies: [ROOT]\n---\n")
 	writeItemFile(t, sub, "notes.txt", "Not a markdown file")
 
-	rc, err := NewRunContext(dir, false)
+	rc, err := NewRunContext(dir, false, false)
 	if err != nil {
 		t.Fatalf("NewRunContext: %v", err)
 	}

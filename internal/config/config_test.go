@@ -199,6 +199,44 @@ func TestLoad_LocalYmlExtension(t *testing.T) {
 	}
 }
 
+func TestLoad_ReadOnly(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+
+	content := []byte("readonly: true\n")
+	if err := os.WriteFile(filepath.Join(dir, ".yat.yaml"), content, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := config.Load()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if !cfg.ReadOnly {
+		t.Fatal("expected ReadOnly to be true")
+	}
+}
+
+func TestLoad_ReadOnlyDefault(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+
+	content := []byte("dir: /some/path\n")
+	if err := os.WriteFile(filepath.Join(dir, ".yat.yaml"), content, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := config.Load()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if cfg.ReadOnly {
+		t.Fatal("expected ReadOnly to default to false")
+	}
+}
+
 func TestLoad_InvalidYAML(t *testing.T) {
 	dir := t.TempDir()
 	t.Chdir(dir)

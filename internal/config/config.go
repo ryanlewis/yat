@@ -14,7 +14,8 @@ import (
 
 // Config represents the .yat.yaml project configuration.
 type Config struct {
-	Dir string `yaml:"dir"`
+	Dir      string `yaml:"dir"`
+	ReadOnly bool   `yaml:"readonly"`
 }
 
 // DefaultConfigFile is the primary config file name written by `yat init`.

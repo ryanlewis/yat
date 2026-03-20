@@ -14,15 +14,16 @@ import (
 
 // RunContext holds shared state available to all commands.
 type RunContext struct {
-	Items  []*item.Item
-	Graph  *graphpkg.Graph
-	JSON   bool
-	Dir    string
-	Stdout io.Writer
+	Items    []*item.Item
+	Graph    *graphpkg.Graph
+	JSON     bool
+	Dir      string
+	ReadOnly bool
+	Stdout   io.Writer
 }
 
 // NewRunContext loads items and builds the graph.
-func NewRunContext(dir string, jsonOutput bool) (*RunContext, error) {
+func NewRunContext(dir string, jsonOutput, readOnly bool) (*RunContext, error) {
 	items, err := item.LoadAll(dir)
 	if err != nil {
 		return nil, err
@@ -38,11 +39,12 @@ func NewRunContext(dir string, jsonOutput bool) (*RunContext, error) {
 	}
 
 	return &RunContext{
-		Items:  items,
-		Graph:  g,
-		JSON:   jsonOutput,
-		Dir:    dir,
-		Stdout: os.Stdout,
+		Items:    items,
+		Graph:    g,
+		JSON:     jsonOutput,
+		Dir:      dir,
+		ReadOnly: readOnly,
+		Stdout:   os.Stdout,
 	}, nil
 }
 

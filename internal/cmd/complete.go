@@ -32,6 +32,10 @@ type blockedRef struct {
 
 // Run executes the complete command.
 func (c *CompleteCmd) Run(rc *RunContext) error {
+	if rc.ReadOnly {
+		return fmt.Errorf("project is read-only (readonly: true in .yat.yaml)")
+	}
+
 	it, ok := rc.Graph.Item(c.ID)
 	if !ok {
 		return fmt.Errorf("item %q not found", c.ID)

@@ -44,14 +44,14 @@ func main() {
 		os.Exit(0)
 	}
 
+	cfg, cfgErr := config.Load()
+	if cfgErr != nil {
+		fmt.Fprintf(os.Stderr, "error: %v\n", cfgErr)
+		os.Exit(1)
+	}
+
 	dir := c.Dir
 	if dir == "" {
-		cfg, cfgErr := config.Load()
-		if cfgErr != nil {
-			fmt.Fprintf(os.Stderr, "error: %v\n", cfgErr)
-			os.Exit(1)
-		}
-
 		dir = cfg.Dir
 	}
 
@@ -59,7 +59,7 @@ func main() {
 		dir = "spec"
 	}
 
-	rc, err := cmd.NewRunContext(dir, c.JSON)
+	rc, err := cmd.NewRunContext(dir, c.JSON, cfg.ReadOnly)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		os.Exit(1)

@@ -50,10 +50,11 @@ yat looks for a project config file to set defaults (e.g. the items directory). 
 3. `.yat.yaml` — shared project config (commit this)
 4. `.yat.yml`
 
-The config file is YAML with one field:
+The config file is YAML with these fields:
 
 ```yaml
 dir: path/to/items   # equivalent to --dir; supports ~ for home directory
+readonly: true       # prevents yat start/complete from modifying item files
 ```
 
 Resolution order for the items directory: `--dir` flag / `YAT_DIR` env → config file `dir` → default `spec`.

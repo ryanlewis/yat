@@ -20,6 +20,10 @@ type startJSON struct {
 
 // Run executes the start command.
 func (s *StartCmd) Run(rc *RunContext) error {
+	if rc.ReadOnly {
+		return fmt.Errorf("project is read-only (readonly: true in .yat.yaml)")
+	}
+
 	it, ok := rc.Graph.Item(s.ID)
 	if !ok {
 		return fmt.Errorf("item %q not found", s.ID)
