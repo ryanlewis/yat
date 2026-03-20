@@ -59,7 +59,7 @@ func main() {
 		dir = "spec"
 	}
 
-	rc, err := cmd.NewRunContext(dir, c.JSON, cfg.ReadOnly)
+	rc, err := cmd.NewRunContext(dir, c.JSON, &cfg)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		os.Exit(1)

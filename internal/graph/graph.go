@@ -14,6 +14,7 @@ type Graph struct {
 	items   map[string]*item.Item
 	forward map[string][]string // item -> its dependencies
 	reverse map[string][]string // item -> items that depend on it
+	isDone  func(item.Status) bool
 }
 
 // Edge represents a dependency relationship.
@@ -63,12 +64,19 @@ func (g *Graph) Edges() []Edge {
 }
 
 // Build constructs a dependency graph from a slice of items.
+// If isDone is nil, defaults to checking for item.StatusDone.
 // Returns an error if any item references a dependency ID that does not exist.
-func Build(items []*item.Item) (*Graph, error) {
+func Build(items []*item.Item, isDone ...func(item.Status) bool) (*Graph, error) {
+	doneFn := func(s item.Status) bool { return s == item.StatusDone }
+	if len(isDone) > 0 && isDone[0] != nil {
+		doneFn = isDone[0]
+	}
+
 	g := &Graph{
 		items:   make(map[string]*item.Item, len(items)),
 		forward: make(map[string][]string, len(items)),
 		reverse: make(map[string][]string, len(items)),
+		isDone:  doneFn,
 	}
 
 	for _, i := range items {
@@ -132,7 +140,7 @@ func (g *Graph) Ready() []*item.Item {
 	var ready []*item.Item
 
 	for _, i := range g.items {
-		if i.Status == item.StatusDone {
+		if g.isDone(i.Status) {
 			continue
 		}
 
@@ -159,7 +167,7 @@ func (g *Graph) Blocked() []*item.Item {
 	var blocked []*item.Item
 
 	for _, i := range g.items {
-		if i.Status == item.StatusDone {
+		if g.isDone(i.Status) {
 			continue
 		}
 
@@ -181,7 +189,7 @@ func (g *Graph) WaitingOn(id string) []string {
 
 	for _, dep := range g.forward[id] {
 		i, ok := g.items[dep]
-		if !ok || i.Status != item.StatusDone {
+		if !ok || !g.isDone(i.Status) {
 			waiting = append(waiting, dep)
 		}
 	}
@@ -211,7 +219,7 @@ func (g *Graph) partitionDependents(id string, wantReady bool) []*item.Item {
 
 	for _, depID := range g.reverse[id] {
 		dep, ok := g.items[depID]
-		if !ok || dep.Status == item.StatusDone {
+		if !ok || g.isDone(dep.Status) {
 			continue
 		}
 
@@ -223,7 +231,7 @@ func (g *Graph) partitionDependents(id string, wantReady bool) []*item.Item {
 			}
 
 			other, exists := g.items[otherDep]
-			if !exists || other.Status != item.StatusDone {
+			if !exists || !g.isDone(other.Status) {
 				allOthersDone = false
 
 				break
@@ -313,7 +321,7 @@ func (g *Graph) DeepestLayer() (depth int, items []string) {
 func (g *Graph) allDepsDone(id string) bool {
 	for _, dep := range g.forward[id] {
 		i, ok := g.items[dep]
-		if !ok || i.Status != item.StatusDone {
+		if !ok || !g.isDone(i.Status) {
 			return false
 		}
 	}

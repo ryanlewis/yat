@@ -21,6 +21,28 @@ func (s Status) Valid() bool {
 	}
 }
 
+// StatusSet is a set of valid status values. It allows the item package to
+// validate statuses against a dynamic set without importing config.
+type StatusSet map[Status]struct{}
+
+// NewStatusSet builds a StatusSet from a slice of status strings.
+func NewStatusSet(statuses []string) StatusSet {
+	ss := make(StatusSet, len(statuses))
+	for _, s := range statuses {
+		ss[Status(s)] = struct{}{}
+	}
+	return ss
+}
+
+// Contains reports whether the set contains s. An empty string is always accepted.
+func (ss StatusSet) Contains(s Status) bool {
+	if s == "" {
+		return true
+	}
+	_, ok := ss[s]
+	return ok
+}
+
 // Priority represents the importance of an item.
 type Priority string
 

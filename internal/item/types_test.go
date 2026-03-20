@@ -18,8 +18,8 @@ func TestStatus_Valid(t *testing.T) {
 		{"Done", false},
 		{"DONE", false},
 		{"banana", false},
-		{"draft ", false},    // trailing space
-		{" draft", false},    // leading space
+		{"draft ", false},      // trailing space
+		{" draft", false},      // leading space
 		{"in progress", false}, // space instead of hyphen
 	}
 
@@ -73,9 +73,9 @@ func TestPriorityRank(t *testing.T) {
 		{PriorityHigh, 1},
 		{PriorityMedium, 2},
 		{PriorityLow, 3},
-		{"", 4},           // unknown
-		{"Unknown", 4},    // unknown
-		{"critical", 4},   // wrong case = unknown
+		{"", 4},         // unknown
+		{"Unknown", 4},  // unknown
+		{"critical", 4}, // wrong case = unknown
 	}
 
 	for _, tt := range tests {

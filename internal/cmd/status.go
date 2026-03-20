@@ -3,23 +3,19 @@ package cmd
 import (
 	"fmt"
 	"strings"
-
-	"github.com/ryanlewis/yat/internal/item"
 )
 
 // StatusCmd shows an overview of all items.
 type StatusCmd struct{}
 
 type statusJSON struct {
-	TotalItems   int            `json:"total_items"`
-	TotalPoints  int            `json:"total_points"`
-	ByType       map[string]int `json:"by_type"`
-	Done         statusGroup    `json:"done"`
-	InProgress   statusGroup    `json:"in_progress"`
-	Draft        statusGroup    `json:"draft"`
-	ReadyNow     []string       `json:"ready_now"`
-	DeepestLayer int            `json:"deepest_layer"`
-	DeepestItems []string       `json:"deepest_items"`
+	TotalItems   int                    `json:"total_items"`
+	TotalPoints  int                    `json:"total_points"`
+	ByType       map[string]int         `json:"by_type"`
+	ByStatus     map[string]statusGroup `json:"by_status"`
+	ReadyNow     []string               `json:"ready_now"`
+	DeepestLayer int                    `json:"deepest_layer"`
+	DeepestItems []string               `json:"deepest_items"`
 }
 
 type statusGroup struct {
@@ -32,26 +28,32 @@ func (s *StatusCmd) Run(rc *RunContext) error {
 	byType := make(map[string]int)
 	var totalPoints int
 
-	var doneCount, donePoints int
+	type groupAccum struct {
+		count  int
+		points int
+	}
 
-	var ipCount, ipPoints int
-
-	var draftCount, draftPoints int
+	groups := map[string]*groupAccum{
+		"done":    {},
+		"active":  {},
+		"initial": {},
+	}
 
 	for _, it := range rc.Items {
 		byType[it.Type]++
 		totalPoints += it.Points
 
-		switch it.Status {
-		case item.StatusDone:
-			doneCount++
-			donePoints += it.Points
-		case item.StatusInProgress:
-			ipCount++
-			ipPoints += it.Points
-		case item.StatusDraft:
-			draftCount++
-			draftPoints += it.Points
+		st := string(it.Status)
+		switch {
+		case rc.Statuses.IsDone(st):
+			groups["done"].count++
+			groups["done"].points += it.Points
+		case rc.Statuses.IsActive(st):
+			groups["active"].count++
+			groups["active"].points += it.Points
+		case rc.Statuses.IsInitial(st):
+			groups["initial"].count++
+			groups["initial"].points += it.Points
 		default:
 			return fmt.Errorf("unexpected status %q for item %s", it.Status, it.ID)
 		}
@@ -67,13 +69,16 @@ func (s *StatusCmd) Run(rc *RunContext) error {
 	deepestLayer, deepestItems := rc.Graph.DeepestLayer()
 
 	if rc.JSON {
+		byStatus := make(map[string]statusGroup, len(groups))
+		for name, g := range groups {
+			byStatus[name] = statusGroup{Count: g.count, Points: g.points}
+		}
+
 		return rc.writeJSON(statusJSON{
 			TotalItems:   len(rc.Items),
 			TotalPoints:  totalPoints,
 			ByType:       byType,
-			Done:         statusGroup{Count: doneCount, Points: donePoints},
-			InProgress:   statusGroup{Count: ipCount, Points: ipPoints},
-			Draft:        statusGroup{Count: draftCount, Points: draftPoints},
+			ByStatus:     byStatus,
 			ReadyNow:     readyIDs,
 			DeepestLayer: deepestLayer,
 			DeepestItems: deepestItems,
@@ -86,11 +91,19 @@ func (s *StatusCmd) Run(rc *RunContext) error {
 	rc.printf("%d items: %s\n", total, strings.Join(typeParts, ", "))
 	rc.printf("Total points: %d\n\n", totalPoints)
 
-	// Status breakdown
+	// Status breakdown — use group labels with representative status names
 	w := rc.newTabWriter()
-	fmt.Fprintf(w, "  done:\t%d\t(%d pts)\n", doneCount, donePoints)
-	fmt.Fprintf(w, "  in-progress:\t%d\t(%d pts)\n", ipCount, ipPoints)
-	fmt.Fprintf(w, "  draft:\t%d\t(%d pts)\n", draftCount, draftPoints)
+	for _, entry := range []struct {
+		label string
+		key   string
+	}{
+		{"done", "done"},
+		{"active", "active"},
+		{"initial", "initial"},
+	} {
+		g := groups[entry.key]
+		fmt.Fprintf(w, "  %s:\t%d\t(%d pts)\n", entry.label, g.count, g.points)
+	}
 
 	if err := w.Flush(); err != nil {
 		return err

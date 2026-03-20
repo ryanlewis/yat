@@ -139,6 +139,81 @@ title: "Unclosed"
 	}
 }
 
+func TestParseWithOptions_Aliases(t *testing.T) {
+	input := "---\nid: TK-001\ntitle: \"Test\"\nstate: backlog\n---\n\nBody.\n"
+	opts := ParseOptions{
+		Aliases:       map[string]string{"state": "status"},
+		ValidStatuses: NewStatusSet([]string{"backlog", "in-progress", "done"}),
+		DefaultStatus: "backlog",
+	}
+
+	item, err := ParseWithOptions([]byte(input), "test.md", opts)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if item == nil {
+		t.Fatal("expected non-nil item")
+	}
+	if item.Status != "backlog" {
+		t.Errorf("Status = %q, want backlog", item.Status)
+	}
+}
+
+func TestParseWithOptions_CustomStatusValidation(t *testing.T) {
+	input := "---\nid: TK-001\nstatus: review\n---\n"
+	opts := ParseOptions{
+		ValidStatuses: NewStatusSet([]string{"backlog", "review", "shipped"}),
+		DefaultStatus: "backlog",
+	}
+
+	item, err := ParseWithOptions([]byte(input), "test.md", opts)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if item.Status != "review" {
+		t.Errorf("Status = %q, want review", item.Status)
+	}
+}
+
+func TestParseWithOptions_CustomStatusRejected(t *testing.T) {
+	input := "---\nid: TK-001\nstatus: banana\n---\n"
+	opts := ParseOptions{
+		ValidStatuses: NewStatusSet([]string{"backlog", "review", "shipped"}),
+	}
+
+	_, err := ParseWithOptions([]byte(input), "test.md", opts)
+	if err == nil {
+		t.Fatal("expected error for invalid custom status")
+	}
+}
+
+func TestParseWithOptions_DefaultStatusApplied(t *testing.T) {
+	input := "---\nid: TK-001\ntitle: \"No status\"\n---\n\nBody.\n"
+	opts := ParseOptions{
+		ValidStatuses: NewStatusSet([]string{"backlog", "done"}),
+		DefaultStatus: "backlog",
+	}
+
+	item, err := ParseWithOptions([]byte(input), "test.md", opts)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if item.Status != "backlog" {
+		t.Errorf("Status = %q, want backlog", item.Status)
+	}
+}
+
+func TestParseWithOptions_BackwardCompat(t *testing.T) {
+	input := "---\nid: TK-001\nstatus: draft\n---\n"
+	item, err := ParseWithOptions([]byte(input), "test.md", ParseOptions{})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if item.Status != StatusDraft {
+		t.Errorf("Status = %q, want draft", item.Status)
+	}
+}
+
 func TestParse_EmptyStatusNormalizedToDraft(t *testing.T) {
 	input := "---\nid: TK-001\ntitle: \"No status\"\n---\n\nBody.\n"
 	item, err := Parse([]byte(input), "test.md")

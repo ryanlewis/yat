@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/ryanlewis/yat/internal/config"
 	graphpkg "github.com/ryanlewis/yat/internal/graph"
 	"github.com/ryanlewis/yat/internal/item"
 )
@@ -23,6 +24,18 @@ func makeTestItems() []*item.Item {
 	}
 }
 
+func defaultConfig() *config.Config {
+	var cfg config.Config
+	cfg.Defaults()
+	return &cfg
+}
+
+var defaultStatuses = config.StatusGroups{
+	Done:    []string{"done"},
+	Active:  []string{"in-progress"},
+	Initial: []string{"draft"},
+}
+
 func newTestContext(t *testing.T, items []*item.Item, jsonMode bool) (*RunContext, *bytes.Buffer) {
 	t.Helper()
 
@@ -34,10 +47,12 @@ func newTestContext(t *testing.T, items []*item.Item, jsonMode bool) (*RunContex
 	var buf bytes.Buffer
 
 	return &RunContext{
-		Items:  items,
-		Graph:  g,
-		JSON:   jsonMode,
-		Stdout: &buf,
+		Items:       items,
+		Graph:       g,
+		JSON:        jsonMode,
+		Statuses:    defaultStatuses,
+		StatusField: "status",
+		Stdout:      &buf,
 	}, &buf
 }
 
@@ -397,11 +412,11 @@ func TestStatusCmd_JSON(t *testing.T) {
 	if result.TotalItems != 6 {
 		t.Errorf("TotalItems = %d, want 6", result.TotalItems)
 	}
-	if result.Done.Count != 2 {
-		t.Errorf("Done.Count = %d, want 2", result.Done.Count)
+	if result.ByStatus["done"].Count != 2 {
+		t.Errorf("ByStatus[done].Count = %d, want 2", result.ByStatus["done"].Count)
 	}
-	if result.Draft.Count != 4 {
-		t.Errorf("Draft.Count = %d, want 4", result.Draft.Count)
+	if result.ByStatus["initial"].Count != 4 {
+		t.Errorf("ByStatus[initial].Count = %d, want 4", result.ByStatus["initial"].Count)
 	}
 }
 
@@ -708,7 +723,7 @@ func TestNewRunContext_Valid(t *testing.T) {
 	writeItemFile(t, dir, "tk-001.md", "---\nid: TK-001\ntitle: \"Task\"\nstatus: draft\n---\n")
 	writeItemFile(t, dir, "tk-002.md", "---\nid: TK-002\ntitle: \"Task 2\"\nstatus: draft\ndependencies: [TK-001]\n---\n")
 
-	rc, err := NewRunContext(dir, false, false)
+	rc, err := NewRunContext(dir, false, defaultConfig())
 	if err != nil {
 		t.Fatalf("NewRunContext: %v", err)
 	}
@@ -725,7 +740,7 @@ func TestNewRunContext_DuplicateIDs(t *testing.T) {
 	writeItemFile(t, dir, "a.md", "---\nid: TK-001\ntitle: \"First\"\nstatus: draft\n---\n")
 	writeItemFile(t, dir, "b.md", "---\nid: TK-001\ntitle: \"Duplicate\"\nstatus: draft\n---\n")
 
-	_, err := NewRunContext(dir, false, false)
+	_, err := NewRunContext(dir, false, defaultConfig())
 	if err == nil {
 		t.Fatal("expected error for duplicate IDs")
 	}
@@ -739,7 +754,7 @@ func TestNewRunContext_CyclicDeps(t *testing.T) {
 	writeItemFile(t, dir, "a.md", "---\nid: TK-001\ntitle: \"A\"\nstatus: draft\ndependencies: [TK-002]\n---\n")
 	writeItemFile(t, dir, "b.md", "---\nid: TK-002\ntitle: \"B\"\nstatus: draft\ndependencies: [TK-001]\n---\n")
 
-	_, err := NewRunContext(dir, false, false)
+	_, err := NewRunContext(dir, false, defaultConfig())
 	if err == nil {
 		t.Fatal("expected error for cyclic dependencies")
 	}
@@ -751,12 +766,143 @@ func TestNewRunContext_CyclicDeps(t *testing.T) {
 func TestNewRunContext_EmptyDir(t *testing.T) {
 	dir := t.TempDir()
 
-	rc, err := NewRunContext(dir, false, false)
+	rc, err := NewRunContext(dir, false, defaultConfig())
 	if err != nil {
 		t.Fatalf("NewRunContext: %v", err)
 	}
 	if len(rc.Items) != 0 {
 		t.Errorf("Items = %d, want 0", len(rc.Items))
+	}
+}
+
+// --- Custom statuses ---
+
+func customStatuses() config.StatusGroups {
+	return config.StatusGroups{
+		Done:    []string{"done", "shipped"},
+		Active:  []string{"in-progress", "review"},
+		Initial: []string{"backlog"},
+	}
+}
+
+func newCustomTestContext(t *testing.T, items []*item.Item, jsonMode bool) (*RunContext, *bytes.Buffer) {
+	t.Helper()
+
+	isDone := func(s item.Status) bool { return s == "done" || s == "shipped" }
+	g, err := graphpkg.Build(items, isDone)
+	if err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+
+	var buf bytes.Buffer
+
+	return &RunContext{
+		Items:       items,
+		Graph:       g,
+		JSON:        jsonMode,
+		Statuses:    customStatuses(),
+		StatusField: "state",
+		Stdout:      &buf,
+	}, &buf
+}
+
+func TestStartCmd_CustomStatuses_AlreadyDone(t *testing.T) {
+	items := []*item.Item{
+		{ID: "A", Title: "Item A", Status: "shipped"},
+	}
+	rc, _ := newCustomTestContext(t, items, false)
+
+	cmd := &StartCmd{ID: "A"}
+	err := cmd.Run(rc)
+	if err == nil {
+		t.Fatal("expected error for already-done item with custom status")
+	}
+	if !strings.Contains(err.Error(), "already done") {
+		t.Errorf("expected 'already done', got: %v", err)
+	}
+}
+
+func TestStartCmd_CustomStatuses_AlreadyActive(t *testing.T) {
+	items := []*item.Item{
+		{ID: "A", Title: "Item A", Status: "review"},
+	}
+	rc, buf := newCustomTestContext(t, items, false)
+
+	cmd := &StartCmd{ID: "A"}
+	if err := cmd.Run(rc); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if !strings.Contains(buf.String(), "already in progress") {
+		t.Errorf("expected 'already in progress', got:\n%s", buf.String())
+	}
+}
+
+func TestCompleteCmd_CustomStatuses_AlreadyDone(t *testing.T) {
+	items := []*item.Item{
+		{ID: "A", Title: "Item A", Status: "shipped"},
+	}
+	rc, _ := newCustomTestContext(t, items, false)
+
+	cmd := &CompleteCmd{ID: "A"}
+	err := cmd.Run(rc)
+	if err == nil {
+		t.Fatal("expected error for already-done item with custom status")
+	}
+}
+
+func TestStatusCmd_CustomStatuses(t *testing.T) {
+	items := []*item.Item{
+		{ID: "A", Status: "shipped", Type: "Task", Points: 3},
+		{ID: "B", Status: "review", Type: "Task", Points: 5},
+		{ID: "C", Status: "backlog", Type: "Task", Points: 2},
+	}
+	rc, buf := newCustomTestContext(t, items, true)
+
+	cmd := &StatusCmd{}
+	if err := cmd.Run(rc); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+
+	var result statusJSON
+	if err := json.Unmarshal(buf.Bytes(), &result); err != nil {
+		t.Fatalf("JSON unmarshal: %v", err)
+	}
+	if result.ByStatus["done"].Count != 1 {
+		t.Errorf("done count = %d, want 1", result.ByStatus["done"].Count)
+	}
+	if result.ByStatus["active"].Count != 1 {
+		t.Errorf("active count = %d, want 1", result.ByStatus["active"].Count)
+	}
+	if result.ByStatus["initial"].Count != 1 {
+		t.Errorf("initial count = %d, want 1", result.ByStatus["initial"].Count)
+	}
+}
+
+func TestNewRunContext_CustomStatuses(t *testing.T) {
+	dir := t.TempDir()
+	writeItemFile(t, dir, "a.md", "---\nid: A\nstate: backlog\n---\n")
+
+	cfg := &config.Config{
+		Statuses: config.StatusGroups{
+			Done:    []string{"done", "shipped"},
+			Active:  []string{"in-progress", "review"},
+			Initial: []string{"backlog"},
+		},
+		FieldAliases: map[string]string{"status": "state"},
+	}
+
+	rc, err := NewRunContext(dir, false, cfg)
+	if err != nil {
+		t.Fatalf("NewRunContext: %v", err)
+	}
+	if len(rc.Items) != 1 {
+		t.Fatalf("Items = %d, want 1", len(rc.Items))
+	}
+	if rc.Items[0].Status != "backlog" {
+		t.Errorf("Status = %q, want backlog", rc.Items[0].Status)
+	}
+	if rc.StatusField != "state" {
+		t.Errorf("StatusField = %q, want state", rc.StatusField)
 	}
 }
 

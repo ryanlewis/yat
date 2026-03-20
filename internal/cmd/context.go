@@ -8,23 +8,41 @@ import (
 	"os"
 	"text/tabwriter"
 
+	"github.com/ryanlewis/yat/internal/config"
 	graphpkg "github.com/ryanlewis/yat/internal/graph"
 	"github.com/ryanlewis/yat/internal/item"
 )
 
 // RunContext holds shared state available to all commands.
 type RunContext struct {
-	Items    []*item.Item
-	Graph    *graphpkg.Graph
-	JSON     bool
-	Dir      string
-	ReadOnly bool
-	Stdout   io.Writer
+	Items       []*item.Item
+	Graph       *graphpkg.Graph
+	JSON        bool
+	Dir         string
+	ReadOnly    bool
+	Stdout      io.Writer
+	Statuses    config.StatusGroups
+	StatusField string // "status" or the configured alias
 }
 
 // NewRunContext loads items and builds the graph.
-func NewRunContext(dir string, jsonOutput, readOnly bool) (*RunContext, error) {
-	items, err := item.LoadAll(dir)
+func NewRunContext(dir string, jsonOutput bool, cfg *config.Config) (*RunContext, error) {
+	// Invert field aliases: config stores canonical→alias, parse needs alias→canonical.
+	aliases := make(map[string]string, len(cfg.FieldAliases))
+	for canonical, alias := range cfg.FieldAliases {
+		aliases[alias] = canonical
+	}
+
+	validStatuses := item.NewStatusSet(cfg.Statuses.AllValid())
+	defaultStatus := item.Status(cfg.Statuses.DefaultInitial())
+
+	parseOpts := item.ParseOptions{
+		Aliases:       aliases,
+		ValidStatuses: validStatuses,
+		DefaultStatus: defaultStatus,
+	}
+
+	items, err := item.LoadAllWithOptions(dir, parseOpts)
 	if err != nil {
 		return nil, err
 	}
@@ -33,19 +51,37 @@ func NewRunContext(dir string, jsonOutput, readOnly bool) (*RunContext, error) {
 		return nil, indexErr
 	}
 
-	g, err := graphpkg.Build(items)
+	isDone := func(s item.Status) bool {
+		return cfg.Statuses.IsDone(string(s))
+	}
+
+	g, err := graphpkg.Build(items, isDone)
 	if err != nil {
 		return nil, err
 	}
 
+	statusField := "status"
+	if alias, ok := cfg.FieldAliases["status"]; ok {
+		statusField = alias
+	}
+
 	return &RunContext{
-		Items:    items,
-		Graph:    g,
-		JSON:     jsonOutput,
-		Dir:      dir,
-		ReadOnly: readOnly,
-		Stdout:   os.Stdout,
+		Items:       items,
+		Graph:       g,
+		JSON:        jsonOutput,
+		Dir:         dir,
+		ReadOnly:    cfg.ReadOnly,
+		Statuses:    cfg.Statuses,
+		StatusField: statusField,
+		Stdout:      os.Stdout,
 	}, nil
+}
+
+func (rc *RunContext) mutateOptions() item.MutateOptions {
+	return item.MutateOptions{
+		FieldName:     rc.StatusField,
+		ValidStatuses: item.NewStatusSet(rc.Statuses.AllValid()),
+	}
 }
 
 func (rc *RunContext) writeJSON(v any) error {

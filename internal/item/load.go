@@ -12,6 +12,11 @@ import (
 // LoadAll discovers and parses all .md files from the given directory (recursively).
 // Files without a valid id field in frontmatter are silently skipped.
 func LoadAll(dir string) ([]*Item, error) {
+	return LoadAllWithOptions(dir, ParseOptions{})
+}
+
+// LoadAllWithOptions is like LoadAll but accepts custom parsing options.
+func LoadAllWithOptions(dir string, opts ParseOptions) ([]*Item, error) {
 	var items []*Item
 
 	err := filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
@@ -27,7 +32,7 @@ func LoadAll(dir string) ([]*Item, error) {
 			return nil
 		}
 
-		item, parseErr := ParseFile(path)
+		item, parseErr := ParseFileWithOptions(path, opts)
 		if parseErr != nil {
 			if errors.Is(parseErr, ErrMissingID) {
 				fmt.Fprintf(os.Stderr, "warning: %v\n", parseErr)

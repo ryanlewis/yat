@@ -79,6 +79,14 @@ func (i *InitCmd) Run(jsonMode bool, stdout io.Writer, stdin io.Reader) error {
 	}
 
 	plan := buildInitPlan(dir)
+
+	if found := detectAgentFiles(); len(found) > 0 {
+		fmt.Fprintf(stdout, "Add yat instructions to %s? [Y/n]: ", strings.Join(found, ", "))
+		if confirmPrompt(scanner) {
+			plan.agentFiles = found
+		}
+	}
+
 	printPlan(stdout, plan)
 
 	fmt.Fprintf(stdout, "\nProceed? [Y/n]: ")
@@ -119,13 +127,18 @@ func buildInitPlan(dir string) initPlan {
 
 	p.createSample = p.mdCount == 0
 
+	return p
+}
+
+func detectAgentFiles() []string {
+	var found []string
 	for _, name := range agentMDFiles {
 		if _, err := os.Stat(name); err == nil {
-			p.agentFiles = append(p.agentFiles, name)
+			found = append(found, name)
 		}
 	}
 
-	return p
+	return found
 }
 
 func printPlan(stdout io.Writer, p initPlan) {

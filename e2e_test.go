@@ -170,8 +170,8 @@ func TestE2E_Status_Text(t *testing.T) {
 	if !strings.Contains(stdout, "3 items") {
 		t.Errorf("expected '3 items', got:\n%s", stdout)
 	}
-	if !strings.Contains(stdout, "draft:") {
-		t.Errorf("expected 'draft:' in output, got:\n%s", stdout)
+	if !strings.Contains(stdout, "initial:") {
+		t.Errorf("expected 'initial:' in output, got:\n%s", stdout)
 	}
 }
 
@@ -569,9 +569,10 @@ func TestE2E_Workflow_StartThenComplete(t *testing.T) {
 	if err := json.Unmarshal([]byte(stdout), &status); err != nil {
 		t.Fatalf("invalid JSON: %v\n%s", err, stdout)
 	}
-	ip := status["in_progress"].(map[string]any)
-	if ip["count"].(float64) != 1 {
-		t.Errorf("in_progress count = %v, want 1", ip["count"])
+	byStatus := status["by_status"].(map[string]any)
+	active := byStatus["active"].(map[string]any)
+	if active["count"].(float64) != 1 {
+		t.Errorf("active count = %v, want 1", active["count"])
 	}
 
 	// Complete TK-001
@@ -623,9 +624,10 @@ func TestE2E_Workflow_CompleteAll(t *testing.T) {
 	if err := json.Unmarshal([]byte(stdout), &status); err != nil {
 		t.Fatalf("invalid JSON: %v\n%s", err, stdout)
 	}
-	done := status["done"].(map[string]any)
-	if done["count"].(float64) != 3 {
-		t.Errorf("done count = %v, want 3", done["count"])
+	byStatus2 := status["by_status"].(map[string]any)
+	doneGroup := byStatus2["done"].(map[string]any)
+	if doneGroup["count"].(float64) != 3 {
+		t.Errorf("done count = %v, want 3", doneGroup["count"])
 	}
 }
 

@@ -34,11 +34,11 @@ func (s *StartCmd) Run(rc *RunContext) error {
 		return fmt.Errorf("cannot start %s: blocked by %s", s.ID, strings.Join(waiting, ", "))
 	}
 
-	if it.Status == item.StatusDone {
+	if rc.Statuses.IsDone(string(it.Status)) {
 		return fmt.Errorf("item %s is already done", s.ID)
 	}
 
-	if it.Status == item.StatusInProgress {
+	if rc.Statuses.IsActive(string(it.Status)) {
 		if rc.JSON {
 			return rc.writeJSON(startJSON{ID: it.ID, Title: it.Title, Body: it.Body})
 		}
@@ -48,7 +48,9 @@ func (s *StartCmd) Run(rc *RunContext) error {
 		return nil
 	}
 
-	if err := item.SetStatus(it.FilePath, item.StatusInProgress); err != nil {
+	target := item.Status(rc.Statuses.DefaultActive())
+
+	if err := item.SetStatusWithOptions(it.FilePath, target, rc.mutateOptions()); err != nil {
 		return err
 	}
 

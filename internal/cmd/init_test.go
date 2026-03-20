@@ -243,7 +243,7 @@ func TestInitCmd_AgentFiles_ClaudeMD(t *testing.T) {
 	os.WriteFile(filepath.Join(dir, "CLAUDE.md"), []byte(original), 0o644)
 
 	var buf bytes.Buffer
-	stdin := strings.NewReader("y\n")
+	stdin := strings.NewReader("y\ny\n") // accept agent files, accept plan
 
 	cmd := &InitCmd{Dir: "spec"}
 	if err := cmd.Run(false, &buf, stdin); err != nil {
@@ -279,7 +279,7 @@ func TestInitCmd_AgentFiles_AgentsMD(t *testing.T) {
 	os.WriteFile(filepath.Join(dir, "AGENTS.md"), []byte(original), 0o644)
 
 	var buf bytes.Buffer
-	stdin := strings.NewReader("y\n")
+	stdin := strings.NewReader("y\ny\n") // accept agent files, accept plan
 
 	cmd := &InitCmd{Dir: "spec"}
 	if err := cmd.Run(false, &buf, stdin); err != nil {
@@ -307,7 +307,7 @@ func TestInitCmd_AgentFiles_Both(t *testing.T) {
 	os.WriteFile(filepath.Join(dir, "AGENTS.md"), []byte("# Agents\n"), 0o644)
 
 	var buf bytes.Buffer
-	stdin := strings.NewReader("y\n")
+	stdin := strings.NewReader("y\ny\n") // accept agent files, accept plan
 
 	cmd := &InitCmd{Dir: "items"}
 	if err := cmd.Run(false, &buf, stdin); err != nil {
@@ -331,7 +331,7 @@ func TestInitCmd_AgentFiles_JSON(t *testing.T) {
 	os.WriteFile(filepath.Join(dir, "CLAUDE.md"), []byte("# Claude\n"), 0o644)
 
 	var buf bytes.Buffer
-	stdin := strings.NewReader("y\n")
+	stdin := strings.NewReader("y\ny\n") // accept agent files, accept plan
 
 	cmd := &InitCmd{Dir: "spec"}
 	if err := cmd.Run(true, &buf, stdin); err != nil {
@@ -361,11 +361,16 @@ func TestInitCmd_AgentFiles_Declined(t *testing.T) {
 	os.WriteFile(filepath.Join(dir, "CLAUDE.md"), []byte(original), 0o644)
 
 	var buf bytes.Buffer
-	stdin := strings.NewReader("n\n")
+	stdin := strings.NewReader("n\ny\n") // decline agent files, accept plan
 
 	cmd := &InitCmd{Dir: "spec"}
 	if err := cmd.Run(false, &buf, stdin); err != nil {
 		t.Fatalf("Run: %v", err)
+	}
+
+	out := buf.String()
+	if strings.Contains(out, "append yat instructions") {
+		t.Errorf("plan should not mention agent files when declined, got:\n%s", out)
 	}
 
 	data, err := os.ReadFile(filepath.Join(dir, "CLAUDE.md"))

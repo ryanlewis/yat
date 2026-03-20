@@ -120,7 +120,7 @@ func TestBuild_LongLinearChain(t *testing.T) {
 	items := make([]*item.Item, chainLen)
 	for i := range chainLen {
 		it := &item.Item{
-			ID:     string(rune('A' + i%26)) + string(rune('0'+i/26)),
+			ID:     string(rune('A'+i%26)) + string(rune('0'+i/26)),
 			Status: item.StatusDraft,
 		}
 		if i > 0 {

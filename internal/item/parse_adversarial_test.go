@@ -123,19 +123,19 @@ func TestParse_DelimiterEdgeCases(t *testing.T) {
 			wantNil: true,
 		},
 		{
-			name:    "multiple --- in body preserved",
-			input:   "---\nid: TK-001\nstatus: draft\n---\n\n---\nThis is a separator\n---\n",
-			wantID:  "TK-001",
+			name:   "multiple --- in body preserved",
+			input:  "---\nid: TK-001\nstatus: draft\n---\n\n---\nThis is a separator\n---\n",
+			wantID: "TK-001",
 		},
 		{
-			name:    "leading newlines before frontmatter",
-			input:   "\n\n\n---\nid: TK-001\nstatus: draft\n---\n",
-			wantID:  "TK-001",
+			name:   "leading newlines before frontmatter",
+			input:  "\n\n\n---\nid: TK-001\nstatus: draft\n---\n",
+			wantID: "TK-001",
 		},
 		{
-			name:    "leading CRLF before frontmatter",
-			input:   "\r\n\r\n---\nid: TK-001\nstatus: draft\n---\n",
-			wantID:  "TK-001",
+			name:   "leading CRLF before frontmatter",
+			input:  "\r\n\r\n---\nid: TK-001\nstatus: draft\n---\n",
+			wantID: "TK-001",
 		},
 		{
 			name:    "four dashes is not a delimiter",
@@ -153,9 +153,9 @@ func TestParse_DelimiterEdgeCases(t *testing.T) {
 			wantNil: true, // "--- " is not "---" followed by \n/\r/EOF
 		},
 		{
-			name:    "closing delimiter at exact EOF",
-			input:   "---\nid: TK-001\nstatus: draft\n---",
-			wantID:  "TK-001",
+			name:   "closing delimiter at exact EOF",
+			input:  "---\nid: TK-001\nstatus: draft\n---",
+			wantID: "TK-001",
 		},
 		{
 			name:    "CR-only line endings",

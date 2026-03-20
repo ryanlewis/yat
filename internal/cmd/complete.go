@@ -41,17 +41,19 @@ func (c *CompleteCmd) Run(rc *RunContext) error {
 		return fmt.Errorf("item %q not found", c.ID)
 	}
 
-	if it.Status == item.StatusDone {
+	if rc.Statuses.IsDone(string(it.Status)) {
 		return fmt.Errorf("item %s is already done", c.ID)
 	}
 
 	// Simulate completion in memory so UnblockedBy/StillBlocked see the new state
 	prevStatus := it.Status
-	it.Status = item.StatusDone
+	it.Status = item.Status(rc.Statuses.DefaultDone())
 	unblocked := rc.Graph.UnblockedBy(c.ID)
 	stillBlocked := rc.Graph.StillBlocked(c.ID)
 
-	if err := item.SetStatus(it.FilePath, item.StatusDone); err != nil {
+	target := item.Status(rc.Statuses.DefaultDone())
+
+	if err := item.SetStatusWithOptions(it.FilePath, target, rc.mutateOptions()); err != nil {
 		it.Status = prevStatus
 
 		return err

@@ -205,6 +205,72 @@ func TestBuild_CyclicDependency(t *testing.T) {
 	}
 }
 
+func TestReady_CustomIsDone(t *testing.T) {
+	// "shipped" is also a done status
+	isDone := func(s item.Status) bool { return s == "done" || s == "shipped" }
+	items := []*item.Item{
+		{ID: "A", Status: "shipped", Dependencies: nil},
+		{ID: "B", Status: "draft", Dependencies: []string{"A"}},
+		{ID: "C", Status: "draft", Dependencies: []string{"B"}},
+	}
+
+	g, err := Build(items, isDone)
+	if err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+
+	ready := g.Ready()
+	if len(ready) != 1 || ready[0].ID != "B" {
+		ids := make([]string, len(ready))
+		for i, r := range ready {
+			ids[i] = r.ID
+		}
+		t.Errorf("ready = %v, want [B]", ids)
+	}
+}
+
+func TestBlocked_CustomIsDone(t *testing.T) {
+	isDone := func(s item.Status) bool { return s == "done" || s == "shipped" }
+	items := []*item.Item{
+		{ID: "A", Status: "shipped", Dependencies: nil},
+		{ID: "B", Status: "draft", Dependencies: []string{"A"}},
+		{ID: "C", Status: "draft", Dependencies: []string{"B"}},
+	}
+
+	g, err := Build(items, isDone)
+	if err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+
+	blocked := g.Blocked()
+	if len(blocked) != 1 || blocked[0].ID != "C" {
+		ids := make([]string, len(blocked))
+		for i, b := range blocked {
+			ids[i] = b.ID
+		}
+		t.Errorf("blocked = %v, want [C]", ids)
+	}
+}
+
+func TestWaitingOn_CustomIsDone(t *testing.T) {
+	isDone := func(s item.Status) bool { return s == "closed" }
+	items := []*item.Item{
+		{ID: "A", Status: "closed", Dependencies: nil},
+		{ID: "B", Status: "open", Dependencies: nil},
+		{ID: "C", Status: "open", Dependencies: []string{"A", "B"}},
+	}
+
+	g, err := Build(items, isDone)
+	if err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+
+	waiting := g.WaitingOn("C")
+	if len(waiting) != 1 || waiting[0] != "B" {
+		t.Errorf("waiting = %v, want [B]", waiting)
+	}
+}
+
 func TestBuild_LongCycle(t *testing.T) {
 	items := []*item.Item{
 		{ID: "A", Dependencies: []string{"C"}},

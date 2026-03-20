@@ -12,10 +12,61 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// StatusGroups defines the three semantic status groups used by the dependency graph.
+// First entry in each group is the default for transitions.
+type StatusGroups struct {
+	Done    []string `yaml:"done"`
+	Active  []string `yaml:"active"`
+	Initial []string `yaml:"initial"`
+}
+
+// IsEmpty reports whether all status slices are nil or empty.
+func (sg StatusGroups) IsEmpty() bool {
+	return len(sg.Done) == 0 && len(sg.Active) == 0 && len(sg.Initial) == 0
+}
+
+// IsDone reports whether s belongs to the done group.
+func (sg StatusGroups) IsDone(s string) bool { return containsStatus(sg.Done, s) }
+
+// IsActive reports whether s belongs to the active group.
+func (sg StatusGroups) IsActive(s string) bool { return containsStatus(sg.Active, s) }
+
+// IsInitial reports whether s belongs to the initial group.
+func (sg StatusGroups) IsInitial(s string) bool { return containsStatus(sg.Initial, s) }
+
+func containsStatus(group []string, s string) bool {
+	for _, v := range group {
+		if v == s {
+			return true
+		}
+	}
+	return false
+}
+
+// DefaultDone returns the first done status (the default for completion transitions).
+func (sg StatusGroups) DefaultDone() string { return sg.Done[0] }
+
+// DefaultActive returns the first active status (the default for start transitions).
+func (sg StatusGroups) DefaultActive() string { return sg.Active[0] }
+
+// DefaultInitial returns the first initial status (the default for new items).
+func (sg StatusGroups) DefaultInitial() string { return sg.Initial[0] }
+
+// AllValid returns the union of all status groups.
+func (sg StatusGroups) AllValid() []string {
+	out := make([]string, 0, len(sg.Done)+len(sg.Active)+len(sg.Initial))
+	out = append(out, sg.Done...)
+	out = append(out, sg.Active...)
+	out = append(out, sg.Initial...)
+	return out
+}
+
 // Config represents the .yat.yaml project configuration.
 type Config struct {
-	Dir      string `yaml:"dir"`
-	ReadOnly bool   `yaml:"readonly"`
+	Dir          string            `yaml:"dir"`
+	ReadOnly     bool              `yaml:"readonly"`
+	Statuses     StatusGroups      `yaml:"statuses"`
+	FieldAliases map[string]string `yaml:"field_aliases"`
 }
 
 // DefaultConfigFile is the primary config file name written by `yat init`.
@@ -37,28 +88,12 @@ func Load() (Config, error) {
 	}
 
 	for {
-		for _, name := range ConfigNames {
-			data, readErr := os.ReadFile(filepath.Join(dir, name))
-			if readErr != nil {
-				if errors.Is(readErr, fs.ErrNotExist) {
-					continue
-				}
+		cfg, found, err := tryLoadFromDir(dir)
+		if err != nil {
+			return Config{}, err
+		}
 
-				return Config{}, readErr
-			}
-
-			var cfg Config
-			if err := yaml.Unmarshal(data, &cfg); err != nil {
-				return Config{}, err
-			}
-
-			expanded, expandErr := expandTilde(cfg.Dir)
-			if expandErr != nil {
-				return Config{}, expandErr
-			}
-
-			cfg.Dir = expanded
-
+		if found {
 			return cfg, nil
 		}
 
@@ -70,7 +105,99 @@ func Load() (Config, error) {
 		dir = parent
 	}
 
-	return Config{}, nil
+	var cfg Config
+	cfg.Defaults()
+
+	return cfg, nil
+}
+
+// tryLoadFromDir tries each config file name in the given directory.
+// Returns the parsed config and true if found, or zero Config and false if not.
+func tryLoadFromDir(dir string) (Config, bool, error) {
+	for _, name := range ConfigNames {
+		data, readErr := os.ReadFile(filepath.Join(dir, name))
+		if readErr != nil {
+			if errors.Is(readErr, fs.ErrNotExist) {
+				continue
+			}
+
+			return Config{}, false, readErr
+		}
+
+		var cfg Config
+		if err := yaml.Unmarshal(data, &cfg); err != nil {
+			return Config{}, false, err
+		}
+
+		expanded, expandErr := expandTilde(cfg.Dir)
+		if expandErr != nil {
+			return Config{}, false, expandErr
+		}
+
+		cfg.Dir = expanded
+		cfg.Defaults()
+
+		if err := cfg.Validate(); err != nil {
+			return Config{}, false, err
+		}
+
+		return cfg, true, nil
+	}
+
+	return Config{}, false, nil
+}
+
+// canonicalFields is the set of field names that can appear as alias keys.
+var canonicalFields = map[string]bool{
+	"id": true, "title": true, "type": true, "priority": true,
+	"points": true, "dependencies": true, "status": true, "phase": true,
+}
+
+// Defaults populates StatusGroups with the built-in defaults when the config
+// omits the statuses key entirely.
+func (c *Config) Defaults() {
+	if c.Statuses.IsEmpty() {
+		c.Statuses = StatusGroups{
+			Done:    []string{"done"},
+			Active:  []string{"in-progress"},
+			Initial: []string{"draft"},
+		}
+	}
+}
+
+// Validate checks that the config is self-consistent.
+func (c *Config) Validate() error {
+	// Check no status appears in multiple groups.
+	seen := make(map[string]string)
+	for _, pair := range []struct {
+		group string
+		vals  []string
+	}{
+		{"done", c.Statuses.Done},
+		{"active", c.Statuses.Active},
+		{"initial", c.Statuses.Initial},
+	} {
+		for _, s := range pair.vals {
+			if prev, ok := seen[s]; ok {
+				return fmt.Errorf("status %q appears in both %s and %s groups", s, prev, pair.group)
+			}
+			seen[s] = pair.group
+		}
+	}
+
+	// Check alias keys are known canonical fields.
+	aliasTargets := make(map[string]string) // alias value → canonical key
+	for canonical, alias := range c.FieldAliases {
+		if !canonicalFields[canonical] {
+			return fmt.Errorf("field_aliases key %q is not a known field", canonical)
+		}
+		if prev, ok := aliasTargets[alias]; ok {
+			return fmt.Errorf("alias %q is used for both %q and %q", alias, prev, canonical)
+		}
+		aliasTargets[alias] = canonical
+	}
+
+	return nil
 }
 
 func expandTilde(path string) (string, error) {

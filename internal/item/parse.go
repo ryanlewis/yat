@@ -10,6 +10,16 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// ParseOptions controls how frontmatter is interpreted.
+type ParseOptions struct {
+	// Aliases maps alias key → canonical key (inverted from config).
+	Aliases map[string]string
+	// ValidStatuses, when non-nil, replaces the built-in Status.Valid() check.
+	ValidStatuses StatusSet
+	// DefaultStatus is used when the status field is empty. Zero value means "draft".
+	DefaultStatus Status
+}
+
 var frontmatterDelimiter = []byte("---")
 
 // ErrMissingID is returned when a file has item-like frontmatter but no id field.
@@ -19,12 +29,17 @@ var ErrMissingID = errors.New("item-like frontmatter has no id field")
 // The body (everything after the closing ---) is stored in Body.
 // Returns nil if the file has no valid frontmatter or no id field.
 func ParseFile(path string) (*Item, error) {
+	return ParseFileWithOptions(path, ParseOptions{})
+}
+
+// ParseFileWithOptions is like ParseFile but accepts custom parsing options.
+func ParseFileWithOptions(path string, opts ParseOptions) (*Item, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("reading %s: %w", path, err)
 	}
 
-	return Parse(data, path)
+	return ParseWithOptions(data, path, opts)
 }
 
 // Parse extracts an Item from raw file bytes.
@@ -32,6 +47,12 @@ func ParseFile(path string) (*Item, error) {
 // Returns ErrMissingID (wrapped) if frontmatter contains item fields but no id.
 // Returns an error if status or priority values are not recognized.
 func Parse(data []byte, path string) (*Item, error) {
+	return ParseWithOptions(data, path, ParseOptions{})
+}
+
+// ParseWithOptions is like Parse but accepts custom parsing options for
+// field aliasing and custom status validation.
+func ParseWithOptions(data []byte, path string, opts ParseOptions) (*Item, error) {
 	fm, body, ok := splitFrontmatter(data)
 	if !ok {
 		return nil, nil
@@ -39,6 +60,11 @@ func Parse(data []byte, path string) (*Item, error) {
 
 	if hasDirective(fm, "ignore") {
 		return nil, nil
+	}
+
+	fm, err := remapAliases(fm, opts.Aliases, path)
+	if err != nil {
+		return nil, err
 	}
 
 	var item Item
@@ -54,12 +80,8 @@ func Parse(data []byte, path string) (*Item, error) {
 		return nil, nil
 	}
 
-	if !item.Status.Valid() {
-		return nil, fmt.Errorf("invalid status %q in %s: must be draft, in-progress, or done", item.Status, path)
-	}
-
-	if item.Status == "" {
-		item.Status = StatusDraft
+	if err := validateStatus(&item, opts, path); err != nil {
+		return nil, err
 	}
 
 	if !item.Priority.Valid() {
@@ -70,6 +92,60 @@ func Parse(data []byte, path string) (*Item, error) {
 	item.Body = string(body)
 
 	return &item, nil
+}
+
+// remapAliases rewrites aliased frontmatter keys to their canonical names.
+func remapAliases(fm []byte, aliases map[string]string, path string) ([]byte, error) {
+	if len(aliases) == 0 {
+		return fm, nil
+	}
+
+	var raw map[string]interface{}
+	if err := yaml.Unmarshal(fm, &raw); err != nil {
+		return nil, fmt.Errorf("parsing frontmatter in %s: %w", path, err)
+	}
+
+	for alias, canonical := range aliases {
+		if v, ok := raw[alias]; ok {
+			if _, exists := raw[canonical]; !exists {
+				raw[canonical] = v
+				delete(raw, alias)
+			}
+		}
+	}
+
+	remapped, err := yaml.Marshal(raw)
+	if err != nil {
+		return nil, fmt.Errorf("re-marshaling frontmatter in %s: %w", path, err)
+	}
+
+	return remapped, nil
+}
+
+// validateStatus checks and normalizes the status field on an item.
+func validateStatus(item *Item, opts ParseOptions, path string) error {
+	if opts.ValidStatuses != nil {
+		if !opts.ValidStatuses.Contains(item.Status) {
+			valid := make([]string, 0, len(opts.ValidStatuses))
+			for s := range opts.ValidStatuses {
+				valid = append(valid, string(s))
+			}
+
+			return fmt.Errorf("invalid status %q in %s: must be one of %v", item.Status, path, valid)
+		}
+	} else if !item.Status.Valid() {
+		return fmt.Errorf("invalid status %q in %s: must be draft, in-progress, or done", item.Status, path)
+	}
+
+	if item.Status == "" {
+		if opts.DefaultStatus != "" {
+			item.Status = opts.DefaultStatus
+		} else {
+			item.Status = StatusDraft
+		}
+	}
+
+	return nil
 }
 
 func looksLikeItem(item *Item) bool {

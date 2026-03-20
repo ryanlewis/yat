@@ -237,6 +237,134 @@ func TestLoad_ReadOnlyDefault(t *testing.T) {
 	}
 }
 
+func TestLoad_Statuses(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+
+	content := []byte(`statuses:
+  done: [done, shipped]
+  active: [in-progress, review]
+  initial: [backlog]
+`)
+	if err := os.WriteFile(filepath.Join(dir, ".yat.yaml"), content, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := config.Load()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(cfg.Statuses.Done) != 2 || cfg.Statuses.Done[0] != "done" || cfg.Statuses.Done[1] != "shipped" {
+		t.Errorf("Done = %v", cfg.Statuses.Done)
+	}
+	if !cfg.Statuses.IsDone("shipped") {
+		t.Error("expected IsDone(shipped) = true")
+	}
+	if !cfg.Statuses.IsActive("review") {
+		t.Error("expected IsActive(review) = true")
+	}
+	if cfg.Statuses.DefaultInitial() != "backlog" {
+		t.Errorf("DefaultInitial = %q, want backlog", cfg.Statuses.DefaultInitial())
+	}
+}
+
+func TestLoad_FieldAliases(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+
+	content := []byte(`field_aliases:
+  status: state
+  dependencies: blocks
+`)
+	if err := os.WriteFile(filepath.Join(dir, ".yat.yaml"), content, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := config.Load()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if cfg.FieldAliases["status"] != "state" {
+		t.Errorf("FieldAliases[status] = %q, want state", cfg.FieldAliases["status"])
+	}
+}
+
+func TestLoad_StatusesDuplicateGroup(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+
+	content := []byte(`statuses:
+  done: [done, shipped]
+  active: [shipped]
+  initial: [draft]
+`)
+	if err := os.WriteFile(filepath.Join(dir, ".yat.yaml"), content, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := config.Load()
+	if err == nil {
+		t.Fatal("expected error for duplicate status across groups")
+	}
+}
+
+func TestLoad_InvalidAliasKey(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+
+	content := []byte(`field_aliases:
+  bogus: state
+`)
+	if err := os.WriteFile(filepath.Join(dir, ".yat.yaml"), content, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := config.Load()
+	if err == nil {
+		t.Fatal("expected error for invalid alias key")
+	}
+}
+
+func TestDefaults_NoStatusesKey(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+
+	content := []byte("dir: /some/path\n")
+	if err := os.WriteFile(filepath.Join(dir, ".yat.yaml"), content, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := config.Load()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(cfg.Statuses.Done) != 1 || cfg.Statuses.Done[0] != "done" {
+		t.Errorf("expected default Done = [done], got %v", cfg.Statuses.Done)
+	}
+	if len(cfg.Statuses.Active) != 1 || cfg.Statuses.Active[0] != "in-progress" {
+		t.Errorf("expected default Active = [in-progress], got %v", cfg.Statuses.Active)
+	}
+	if len(cfg.Statuses.Initial) != 1 || cfg.Statuses.Initial[0] != "draft" {
+		t.Errorf("expected default Initial = [draft], got %v", cfg.Statuses.Initial)
+	}
+}
+
+func TestStatusGroups_AllValid(t *testing.T) {
+	sg := config.StatusGroups{
+		Done:    []string{"done", "shipped"},
+		Active:  []string{"in-progress"},
+		Initial: []string{"draft"},
+	}
+
+	all := sg.AllValid()
+	if len(all) != 4 {
+		t.Errorf("AllValid returned %d items, want 4", len(all))
+	}
+}
+
 func TestLoad_InvalidYAML(t *testing.T) {
 	dir := t.TempDir()
 	t.Chdir(dir)

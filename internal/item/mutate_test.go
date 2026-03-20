@@ -116,6 +116,68 @@ Body.
 	}
 }
 
+func TestSetStatusWithOptions_AliasedField(t *testing.T) {
+	content := `---
+id: TK-001
+title: "Test"
+state: backlog
+---
+
+Body.
+`
+	dir := t.TempDir()
+	path := filepath.Join(dir, "test.md")
+
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatalf("writing test file: %v", err)
+	}
+
+	opts := MutateOptions{
+		FieldName:     "state",
+		ValidStatuses: NewStatusSet([]string{"backlog", "review", "shipped"}),
+	}
+
+	if err := SetStatusWithOptions(path, "review", opts); err != nil {
+		t.Fatalf("SetStatusWithOptions: %v", err)
+	}
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("reading back: %v", err)
+	}
+
+	result := string(data)
+	if !strings.Contains(result, "state: review") {
+		t.Errorf("state not updated, got:\n%s", result)
+	}
+	if strings.Contains(result, "state: backlog") {
+		t.Errorf("old state still present, got:\n%s", result)
+	}
+}
+
+func TestSetStatusWithOptions_CustomValidation(t *testing.T) {
+	content := `---
+id: TK-001
+status: draft
+---
+`
+	dir := t.TempDir()
+	path := filepath.Join(dir, "test.md")
+
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatalf("writing test file: %v", err)
+	}
+
+	opts := MutateOptions{
+		ValidStatuses: NewStatusSet([]string{"draft", "review", "shipped"}),
+	}
+
+	err := SetStatusWithOptions(path, "banana", opts)
+	if err == nil {
+		t.Fatal("expected error for invalid custom status")
+	}
+}
+
 func TestSetStatusInBody(t *testing.T) {
 	// Verify that a "status:" line in the body is NOT rewritten
 	content := `---
