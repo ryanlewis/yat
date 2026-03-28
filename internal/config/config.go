@@ -129,7 +129,7 @@ func tryLoadFromDir(dir string) (Config, bool, error) {
 			return Config{}, false, err
 		}
 
-		expanded, expandErr := expandTilde(cfg.Dir)
+		expanded, expandErr := ExpandTilde(cfg.Dir)
 		if expandErr != nil {
 			return Config{}, false, expandErr
 		}
@@ -158,9 +158,9 @@ var canonicalFields = map[string]bool{
 func (c *Config) Defaults() {
 	if c.Statuses.IsEmpty() {
 		c.Statuses = StatusGroups{
-			Done:    []string{"done"},
-			Active:  []string{"in-progress"},
-			Initial: []string{"draft"},
+			Done:    []string{"done", "complete", "completed", "closed"},
+			Active:  []string{"in-progress", "active", "started"},
+			Initial: []string{"draft", "todo", "backlog", "new"},
 		}
 	}
 }
@@ -200,14 +200,14 @@ func (c *Config) Validate() error {
 	return nil
 }
 
-func expandTilde(path string) (string, error) {
+func ExpandTilde(path string) (string, error) {
 	if !strings.HasPrefix(path, "~") {
 		return path, nil
 	}
 
 	home, err := os.UserHomeDir()
 	if err != nil {
-		return "", fmt.Errorf("expanding ~ in config dir: %w", err)
+		return "", fmt.Errorf("expanding ~: %w", err)
 	}
 
 	return filepath.Join(home, path[1:]), nil

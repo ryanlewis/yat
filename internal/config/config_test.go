@@ -341,14 +341,17 @@ func TestDefaults_NoStatusesKey(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if len(cfg.Statuses.Done) != 1 || cfg.Statuses.Done[0] != "done" {
-		t.Errorf("expected default Done = [done], got %v", cfg.Statuses.Done)
+	wantDone := []string{"done", "complete", "completed", "closed"}
+	if len(cfg.Statuses.Done) != len(wantDone) || cfg.Statuses.Done[0] != "done" {
+		t.Errorf("expected default Done = %v, got %v", wantDone, cfg.Statuses.Done)
 	}
-	if len(cfg.Statuses.Active) != 1 || cfg.Statuses.Active[0] != "in-progress" {
-		t.Errorf("expected default Active = [in-progress], got %v", cfg.Statuses.Active)
+	wantActive := []string{"in-progress", "active", "started"}
+	if len(cfg.Statuses.Active) != len(wantActive) || cfg.Statuses.Active[0] != "in-progress" {
+		t.Errorf("expected default Active = %v, got %v", wantActive, cfg.Statuses.Active)
 	}
-	if len(cfg.Statuses.Initial) != 1 || cfg.Statuses.Initial[0] != "draft" {
-		t.Errorf("expected default Initial = [draft], got %v", cfg.Statuses.Initial)
+	wantInitial := []string{"draft", "todo", "backlog", "new"}
+	if len(cfg.Statuses.Initial) != len(wantInitial) || cfg.Statuses.Initial[0] != "draft" {
+		t.Errorf("expected default Initial = %v, got %v", wantInitial, cfg.Statuses.Initial)
 	}
 }
 
