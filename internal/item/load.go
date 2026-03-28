@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
-	"os"
 	"path/filepath"
 	"strings"
 )
@@ -35,8 +34,6 @@ func LoadAllWithOptions(dir string, opts ParseOptions) ([]*Item, error) {
 		item, parseErr := ParseFileWithOptions(path, opts)
 		if parseErr != nil {
 			if errors.Is(parseErr, ErrMissingID) {
-				fmt.Fprintf(os.Stderr, "warning: %v\n", parseErr)
-
 				return nil
 			}
 

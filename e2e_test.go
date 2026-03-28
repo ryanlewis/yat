@@ -786,7 +786,7 @@ func TestE2E_NoiseFilesIgnored(t *testing.T) {
 	}
 }
 
-// --- ErrMissingID warning goes to stderr ---
+// --- ErrMissingID files are silently skipped ---
 
 func TestE2E_MissingIDWarning(t *testing.T) {
 	t.Parallel()
@@ -801,9 +801,9 @@ func TestE2E_MissingIDWarning(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("exit code = %d, stderr: %s", code, stderr)
 	}
-	// Warning should go to stderr, not stdout
-	if !strings.Contains(stderr, "warning") {
-		t.Errorf("expected warning in stderr, got: %q", stderr)
+	// Missing-ID files should be silently skipped — no warning on stderr
+	if stderr != "" {
+		t.Errorf("expected no stderr output, got: %q", stderr)
 	}
 	// Stdout should still work
 	if !strings.Contains(stdout, "1 items") {
