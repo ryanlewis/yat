@@ -64,6 +64,13 @@ func main() {
 		dir = "spec"
 	}
 
+	if _, statErr := os.Stat(dir); os.IsNotExist(statErr) {
+		fmt.Fprintf(os.Stderr, "error: items directory %q not found.\n", dir)
+		fmt.Fprintf(os.Stderr,
+			"Run 'yat init' to create a new project, or use --dir to specify a different directory.\n")
+		os.Exit(1)
+	}
+
 	rc, err := cmd.NewRunContext(dir, c.JSON, &cfg)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
