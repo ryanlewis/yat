@@ -38,7 +38,7 @@ func TestInitCmd_Fresh(t *testing.T) {
 	dir := chdirTemp(t)
 
 	var buf bytes.Buffer
-	stdin := strings.NewReader("spec\ny\n")
+	stdin := strings.NewReader("spec\ny\ny\n") // dir prompt, confirm non-existent, proceed
 
 	cmd := &InitCmd{}
 	if err := cmd.Run(false, &buf, stdin); err != nil {
@@ -46,6 +46,9 @@ func TestInitCmd_Fresh(t *testing.T) {
 	}
 
 	out := buf.String()
+	if !strings.Contains(out, "does not exist") {
+		t.Errorf("expected directory warning, got:\n%s", out)
+	}
 	if !strings.Contains(out, "Initialized yat project") {
 		t.Errorf("expected success message, got:\n%s", out)
 	}
@@ -186,8 +189,8 @@ func TestInitCmd_JSON(t *testing.T) {
 	if result.ConfigFile != ".yat.yaml" {
 		t.Errorf("ConfigFile = %q, want .yat.yaml", result.ConfigFile)
 	}
-	if result.Dir != "spec" {
-		t.Errorf("Dir = %q, want spec", result.Dir)
+	if result.Dir != defaultDir {
+		t.Errorf("Dir = %q, want %s", result.Dir, defaultDir)
 	}
 	if !result.Created {
 		t.Error("Created = false, want true")
@@ -383,21 +386,127 @@ func TestInitCmd_AgentFiles_Declined(t *testing.T) {
 }
 
 func TestPromptDir_Default(t *testing.T) {
+	chdirTemp(t)
+
 	var buf bytes.Buffer
-	scanner := bufio.NewScanner(strings.NewReader("\n"))
+	scanner := bufio.NewScanner(strings.NewReader("\ny\n")) // default "spec", confirm creation
 
 	got := promptDir(scanner, &buf)
-	if got != "spec" {
-		t.Errorf("promptDir = %q, want spec", got)
+	if got != defaultDir {
+		t.Errorf("promptDir = %q, want %s", got, defaultDir)
+	}
+
+	if !strings.Contains(buf.String(), "does not exist") {
+		t.Error("expected non-existence warning for missing directory")
 	}
 }
 
 func TestPromptDir_Custom(t *testing.T) {
+	chdirTemp(t)
+
 	var buf bytes.Buffer
-	scanner := bufio.NewScanner(strings.NewReader("myitems\n"))
+	scanner := bufio.NewScanner(strings.NewReader("myitems\ny\n")) // custom dir, confirm creation
 
 	got := promptDir(scanner, &buf)
 	if got != "myitems" {
 		t.Errorf("promptDir = %q, want myitems", got)
+	}
+}
+
+func TestPromptDir_ExistingDir(t *testing.T) {
+	dir := chdirTemp(t)
+	os.MkdirAll(filepath.Join(dir, "spec"), 0o755)
+
+	var buf bytes.Buffer
+	scanner := bufio.NewScanner(strings.NewReader("\n")) // default "spec", no confirmation needed
+
+	got := promptDir(scanner, &buf)
+	if got != defaultDir {
+		t.Errorf("promptDir = %q, want %s", got, defaultDir)
+	}
+
+	if strings.Contains(buf.String(), "does not exist") {
+		t.Error("unexpected non-existence warning for existing directory")
+	}
+}
+
+func TestPromptDir_TrailingSlash(t *testing.T) {
+	dir := chdirTemp(t)
+	os.MkdirAll(filepath.Join(dir, "spec"), 0o755)
+
+	var buf bytes.Buffer
+	scanner := bufio.NewScanner(strings.NewReader("spec/\n"))
+
+	got := promptDir(scanner, &buf)
+	if got != defaultDir {
+		t.Errorf("promptDir = %q, want %s (cleaned)", got, defaultDir)
+	}
+}
+
+func TestPromptDir_Retry(t *testing.T) {
+	dir := chdirTemp(t)
+	os.MkdirAll(filepath.Join(dir, "items"), 0o755)
+
+	var buf bytes.Buffer
+	// "backlog" doesn't exist → decline → "items" exists → accepted
+	scanner := bufio.NewScanner(strings.NewReader("backlog\nn\nitems\n"))
+
+	got := promptDir(scanner, &buf)
+	if got != "items" {
+		t.Errorf("promptDir = %q, want items", got)
+	}
+
+	out := buf.String()
+	if !strings.Contains(out, `"backlog" does not exist`) {
+		t.Errorf("expected warning about backlog, got:\n%s", out)
+	}
+}
+
+func TestShowDirSuggestions(t *testing.T) {
+	dir := chdirTemp(t)
+
+	os.MkdirAll(filepath.Join(dir, "spec"), 0o755)
+	os.MkdirAll(filepath.Join(dir, ".hidden"), 0o755)
+	os.MkdirAll(filepath.Join(dir, "docs"), 0o755)
+	os.WriteFile(filepath.Join(dir, "spec", "item1.md"), []byte("test"), 0o644)
+	os.WriteFile(filepath.Join(dir, "spec", "item2.md"), []byte("test"), 0o644)
+
+	var buf bytes.Buffer
+	showDirSuggestions(&buf)
+
+	out := buf.String()
+	if !strings.Contains(out, "spec/ (2 items)") {
+		t.Errorf("expected spec with item count, got: %s", out)
+	}
+	if !strings.Contains(out, "docs/") {
+		t.Errorf("expected docs/, got: %s", out)
+	}
+	if strings.Contains(out, ".hidden") {
+		t.Error("should not list hidden directories")
+	}
+}
+
+func TestShowDirSuggestions_SingleItem(t *testing.T) {
+	dir := chdirTemp(t)
+
+	os.MkdirAll(filepath.Join(dir, "spec"), 0o755)
+	os.WriteFile(filepath.Join(dir, "spec", "item.md"), []byte("test"), 0o644)
+
+	var buf bytes.Buffer
+	showDirSuggestions(&buf)
+
+	if !strings.Contains(buf.String(), "spec/ (1 item)") {
+		t.Errorf("expected singular 'item', got: %s", buf.String())
+	}
+}
+
+func TestShowDirSuggestions_Empty(t *testing.T) {
+	chdirTemp(t)
+
+	var buf bytes.Buffer
+	showDirSuggestions(&buf)
+
+	if buf.Len() != 0 {
+		t.Errorf("expected no output for empty directory, got: %s", buf.String())
 	}
 }

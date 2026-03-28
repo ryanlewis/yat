@@ -3,6 +3,7 @@ package cmd
 import (
 	"bufio"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"io/fs"
@@ -10,7 +11,9 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/ergochat/readline"
 	"github.com/ryanlewis/yat/internal/config"
+	"golang.org/x/term"
 )
 
 // InitCmd initializes a new yat project in the current directory.
@@ -72,9 +75,23 @@ func (i *InitCmd) Run(jsonMode bool, stdout io.Writer, stdin io.Reader) error {
 	}
 
 	scanner := bufio.NewScanner(stdin)
-
 	dir := i.Dir
-	if dir == "" {
+
+	switch {
+	case dir != "":
+		expanded, err := config.ExpandTilde(dir)
+		if err != nil {
+			return err
+		}
+		dir = expanded
+	case isTerminal(stdin):
+		var err error
+		dir, err = promptDirInteractive(stdout, stdin)
+		if err != nil {
+			return err
+		}
+	default:
+		showDirSuggestions(stdout)
 		dir = promptDir(scanner, stdout)
 	}
 
@@ -257,15 +274,175 @@ func printResult(jsonMode bool, stdout io.Writer, p initPlan) error {
 }
 
 func promptDir(scanner *bufio.Scanner, stdout io.Writer) string {
-	fmt.Fprintf(stdout, "Items directory [%s]: ", defaultDir)
+	for {
+		fmt.Fprintf(stdout, "Items directory [%s]: ", defaultDir)
 
-	if scanner.Scan() {
-		if line := strings.TrimSpace(scanner.Text()); line != "" {
-			return line
+		dir := defaultDir
+		if scanner.Scan() {
+			if line := strings.TrimSpace(scanner.Text()); line != "" {
+				dir = filepath.Clean(line)
+			}
+		} else {
+			return defaultDir
+		}
+
+		dir, ok := resolveDir(dir, scanner, stdout)
+		if ok {
+			return dir
+		}
+	}
+}
+
+// resolveDir expands tildes, checks whether the directory exists, and if not,
+// asks the user to confirm creation. Returns the resolved path and true if
+// accepted, or ("", false) to re-prompt.
+func resolveDir(dir string, scanner *bufio.Scanner, stdout io.Writer) (string, bool) {
+	expanded, expandErr := config.ExpandTilde(dir)
+	if expandErr != nil {
+		fmt.Fprintf(stdout, "Cannot expand ~: %v\n", expandErr)
+		return "", false
+	}
+	dir = expanded
+
+	if info, err := os.Stat(dir); err == nil && info.IsDir() {
+		return dir, true
+	}
+
+	fmt.Fprintf(stdout, "Directory %q does not exist and will be created.\n", dir)
+	fmt.Fprintf(stdout, "Use this path? [Y/n]: ")
+
+	return dir, confirmPrompt(scanner)
+}
+
+func showDirSuggestions(stdout io.Writer) {
+	entries, err := os.ReadDir(".")
+	if err != nil {
+		return
+	}
+
+	var parts []string
+
+	for _, e := range entries {
+		if !e.IsDir() || strings.HasPrefix(e.Name(), ".") {
+			continue
+		}
+
+		name := e.Name()
+		if count := countMDFiles(name); count > 0 {
+			if count == 1 {
+				parts = append(parts, fmt.Sprintf("%s/ (1 item)", name))
+			} else {
+				parts = append(parts, fmt.Sprintf("%s/ (%d items)", name, count))
+			}
+		} else {
+			parts = append(parts, name+"/")
 		}
 	}
 
-	return defaultDir
+	if len(parts) > 0 {
+		fmt.Fprintf(stdout, "Directories: %s\n", strings.Join(parts, "  "))
+	}
+}
+
+func isTerminal(r io.Reader) bool {
+	f, ok := r.(*os.File)
+	if !ok {
+		return false
+	}
+
+	return term.IsTerminal(int(f.Fd())) //nolint:gosec // file descriptors fit in int
+}
+
+func promptDirInteractive(stdout io.Writer, stdin io.Reader) (string, error) {
+	showDirSuggestions(stdout)
+
+	rl, err := readline.NewFromConfig(&readline.Config{
+		Prompt:       fmt.Sprintf("Items directory [%s]: ", defaultDir),
+		AutoComplete: dirAutoCompleter{},
+	})
+	if err != nil {
+		fmt.Fprintf(stdout, "Note: tab completion unavailable (%v)\n", err)
+		scanner := bufio.NewScanner(stdin)
+		return promptDir(scanner, stdout), nil
+	}
+	defer rl.Close()
+
+	for {
+		line, err := rl.Readline()
+		if err != nil {
+			if errors.Is(err, readline.ErrInterrupt) {
+				return "", fmt.Errorf("interrupted")
+			}
+			return "", fmt.Errorf("reading input: %w", err)
+		}
+
+		dir := strings.TrimSpace(line)
+		if dir == "" {
+			dir = defaultDir
+		}
+
+		dir = filepath.Clean(dir)
+
+		scanner := bufio.NewScanner(stdin)
+		if resolved, ok := resolveDir(dir, scanner, stdout); ok {
+			return resolved, nil
+		}
+	}
+}
+
+type dirAutoCompleter struct{}
+
+func (d dirAutoCompleter) Do(line []rune, pos int) (candidates [][]rune, length int) {
+	input := string(line[:pos])
+
+	if input == "~" {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return nil, 0
+		}
+
+		return dirSuffixes(home, "", "/"), 0
+	}
+
+	searchDir := "."
+	prefix := input
+
+	if i := strings.LastIndex(input, "/"); i >= 0 {
+		searchDir = input[:i]
+		if searchDir == "" {
+			searchDir = "/"
+		}
+
+		prefix = input[i+1:]
+	}
+
+	if expanded, err := config.ExpandTilde(searchDir); err == nil {
+		searchDir = expanded
+	}
+
+	return dirSuffixes(searchDir, prefix, ""), len([]rune(prefix))
+}
+
+func dirSuffixes(dir, prefix, prepend string) [][]rune {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil
+	}
+
+	var candidates [][]rune
+
+	for _, e := range entries {
+		if !e.IsDir() || strings.HasPrefix(e.Name(), ".") {
+			continue
+		}
+
+		if strings.HasPrefix(e.Name(), prefix) {
+			suffix := e.Name()[len(prefix):]
+			candidates = append(candidates, []rune(prepend+suffix+"/"))
+		}
+	}
+
+	return candidates
 }
 
 func confirmPrompt(scanner *bufio.Scanner) bool {
