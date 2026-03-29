@@ -36,8 +36,6 @@ internal/
     config.go        Load with directory traversal, tilde expansion
   cmd/               One file per command, all implement Run(*RunContext) error
     context.go       RunContext: loads items, builds graph, shared by all commands
-    init.go          blocked.go  complete.go  graph.go  list.go
-    next.go          ready.go    show.go      start.go  status.go  agents.go
 ```
 
 **Data flow:** `main.go` → `cmd.NewRunContext(dir)` → `item.LoadAll(dir)` → `graph.Build(items)` → command `.Run(rc)`.
