@@ -1,6 +1,10 @@
 package cmd
 
-import "fmt"
+import (
+	"fmt"
+	"sort"
+	"strings"
+)
 
 // GraphCmd renders the dependency graph as text.
 type GraphCmd struct{}
@@ -39,28 +43,64 @@ func (g *GraphCmd) Run(rc *RunContext) error {
 		return nil
 	}
 
+	rc.printf("▶️ ready  🔄 active  🚫 blocked  ✅ done\n\n")
+
+	return g.renderText(rc, layers)
+}
+
+func (g *GraphCmd) renderText(rc *RunContext, layers [][]string) error {
+	maxIDLen := graphMaxIDLen(layers)
+
 	for i, layer := range layers {
-		rc.printf("Layer %d:", i)
+		if i > 0 {
+			rc.printf("\n")
+		}
+
+		rc.printf("Layer %d\n", i)
 
 		for _, id := range layer {
-			item, ok := rc.Graph.Item(id)
+			it, ok := rc.Graph.Item(id)
 			if !ok {
 				return fmt.Errorf("internal error: graph layer references unknown item %q", id)
 			}
-			status := string(item.Status)
 
-			fmt.Fprintf(rc.Stdout, "  %s [%s]", id, status)
-		}
+			emoji := graphStatusEmoji(string(it.Status), rc.Graph.AllDepsDone(id), rc)
+			deps := rc.Graph.DependentsOf(id)
+			sort.Strings(deps)
 
-		rc.printf("\n")
-
-		// Show edges from this layer to dependents
-		for _, id := range layer {
-			for _, depID := range rc.Graph.DependentsOf(id) {
-				fmt.Fprintf(rc.Stdout, "  %s -> %s\n", id, depID)
+			if len(deps) > 0 {
+				fmt.Fprintf(rc.Stdout, "  %s %-*s  → %s\n", emoji, maxIDLen, id, strings.Join(deps, ", "))
+			} else {
+				fmt.Fprintf(rc.Stdout, "  %s %s\n", emoji, id)
 			}
 		}
 	}
 
 	return nil
+}
+
+func graphMaxIDLen(layers [][]string) int {
+	maxLen := 0
+	for _, layer := range layers {
+		for _, id := range layer {
+			if len(id) > maxLen {
+				maxLen = len(id)
+			}
+		}
+	}
+
+	return maxLen
+}
+
+func graphStatusEmoji(status string, allDepsDone bool, rc *RunContext) string {
+	switch {
+	case rc.Statuses.IsDone(status):
+		return "✅"
+	case rc.Statuses.IsActive(status):
+		return "🔄"
+	case allDepsDone:
+		return "▶️"
+	default:
+		return "🚫"
+	}
 }

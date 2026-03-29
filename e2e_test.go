@@ -380,10 +380,10 @@ func TestE2E_Graph_Text(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("exit code = %d", code)
 	}
-	if !strings.Contains(stdout, "Layer 0:") {
-		t.Errorf("expected 'Layer 0:', got:\n%s", stdout)
+	if !strings.Contains(stdout, "Layer 0") {
+		t.Errorf("expected 'Layer 0', got:\n%s", stdout)
 	}
-	if !strings.Contains(stdout, "->") {
+	if !strings.Contains(stdout, "→") {
 		t.Errorf("expected edges, got:\n%s", stdout)
 	}
 }

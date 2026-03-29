@@ -432,11 +432,14 @@ func TestGraphCmd_Text(t *testing.T) {
 	}
 
 	out := buf.String()
-	if !strings.Contains(out, "Layer 0:") {
-		t.Errorf("expected 'Layer 0:' in output, got:\n%s", out)
+	if !strings.Contains(out, "Layer 0") {
+		t.Errorf("expected 'Layer 0' in output, got:\n%s", out)
 	}
-	if !strings.Contains(out, "->") {
+	if !strings.Contains(out, "→") {
 		t.Errorf("expected edges in output, got:\n%s", out)
+	}
+	if !strings.Contains(out, "✅") {
+		t.Errorf("expected done emoji in output, got:\n%s", out)
 	}
 }
 
