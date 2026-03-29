@@ -144,7 +144,7 @@ func (g *Graph) Ready() []*item.Item {
 			continue
 		}
 
-		if g.allDepsDone(i.ID) {
+		if g.AllDepsDone(i.ID) {
 			ready = append(ready, i)
 		}
 	}
@@ -171,7 +171,7 @@ func (g *Graph) Blocked() []*item.Item {
 			continue
 		}
 
-		if !g.allDepsDone(i.ID) {
+		if !g.AllDepsDone(i.ID) {
 			blocked = append(blocked, i)
 		}
 	}
@@ -318,7 +318,8 @@ func (g *Graph) DeepestLayer() (depth int, items []string) {
 	return last, layers[last]
 }
 
-func (g *Graph) allDepsDone(id string) bool {
+// AllDepsDone reports whether all dependencies of the given item are done.
+func (g *Graph) AllDepsDone(id string) bool {
 	for _, dep := range g.forward[id] {
 		i, ok := g.items[dep]
 		if !ok || !g.isDone(i.Status) {

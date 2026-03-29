@@ -20,6 +20,7 @@ type cli struct {
 	Start    cmd.StartCmd    `cmd:"" help:"Start working on an item."`
 	Complete cmd.CompleteCmd `cmd:"" help:"Mark an item as done."`
 	Blocked  cmd.BlockedCmd  `cmd:"" help:"Show blocked items and their dependencies."`
+	List     cmd.ListCmd     `cmd:"" help:"List all items grouped by status."`
 	Status   cmd.StatusCmd   `cmd:"" help:"Show an overview of all items."`
 	Graph    cmd.GraphCmd    `cmd:"" help:"Show the dependency graph."`
 	Agents   cmd.AgentsCmd   `cmd:"" help:"Print a usage guide for AI agents."`
