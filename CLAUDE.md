@@ -11,6 +11,7 @@ make build       # build binary to ./yat
 make test        # go test -v -race -coverprofile=coverage.out ./...
 make lint        # golangci-lint run
 make coverage    # generate HTML coverage report
+make clean       # remove binary, coverage files
 ```
 
 Run a single test:
@@ -35,9 +36,13 @@ internal/
     config.go        Load with directory traversal, tilde expansion
   cmd/               One file per command, all implement Run(*RunContext) error
     context.go       RunContext: loads items, builds graph, shared by all commands
+    init.go          blocked.go  complete.go  graph.go  list.go
+    next.go          ready.go    show.go      start.go  status.go  agents.go
 ```
 
 **Data flow:** `main.go` → `cmd.NewRunContext(dir)` → `item.LoadAll(dir)` → `graph.Build(items)` → command `.Run(rc)`.
+
+`init` and `agents` are special-cased in `main.go` — they run before config loading and bypass `RunContext` entirely.
 
 Every command supports text and `--json` output modes. Text goes through `tabwriter`; JSON through `encoding/json`.
 
@@ -64,5 +69,5 @@ Resolution order for the items directory: `--dir` flag / `YAT_DIR` env → confi
 - US English as enforced by `misspell` linter.
 - Items are called "items" everywhere — not "specs", "issues", or "tickets".
 - The `--dir` flag (env `YAT_DIR`, default `spec`) points to the items directory.
-- Linting: golangci-lint with 28 linters enabled. Max line length 120, cyclomatic complexity 15, cognitive complexity 20.
+- Linting: golangci-lint (see `.golangci.yml`). Max line length 120, cyclomatic complexity 15, cognitive complexity 20.
 - All new CLI output must support `--json` mode.
