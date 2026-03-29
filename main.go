@@ -22,6 +22,7 @@ type cli struct {
 	Blocked  cmd.BlockedCmd  `cmd:"" help:"Show blocked items and their dependencies."`
 	Status   cmd.StatusCmd   `cmd:"" help:"Show an overview of all items."`
 	Graph    cmd.GraphCmd    `cmd:"" help:"Show the dependency graph."`
+	Agents   cmd.AgentsCmd   `cmd:"" help:"Print a usage guide for AI agents."`
 }
 
 func main() {
@@ -43,6 +44,14 @@ func main() {
 
 	if ctx.Command() == "init" || ctx.Command() == "init <dir>" {
 		if err := c.Init.Run(c.JSON, os.Stdout, os.Stdin); err != nil {
+			fmt.Fprintf(os.Stderr, "error: %v\n", err)
+			os.Exit(1)
+		}
+		os.Exit(0)
+	}
+
+	if ctx.Command() == "agents" {
+		if err := c.Agents.Run(); err != nil {
 			fmt.Fprintf(os.Stderr, "error: %v\n", err)
 			os.Exit(1)
 		}
