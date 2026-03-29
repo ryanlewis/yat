@@ -38,7 +38,15 @@ spec/
     SP-001-evaluate-db.md
 ```
 
-Each item is a markdown file with YAML frontmatter:
+An item is any `.md` file with YAML frontmatter containing an `id` field. That's the only required field — everything else is optional:
+
+```markdown
+---
+id: TK-001
+---
+```
+
+Status defaults to `draft` when omitted. A more complete item might look like:
 
 ```markdown
 ---
