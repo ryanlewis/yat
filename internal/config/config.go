@@ -82,19 +82,51 @@ var ConfigNames = []string{".yat.local.yaml", ".yat.local.yml", DefaultConfigFil
 // .yat.local.yml, .yat.yaml, and .yat.yml in that order. If no config file is
 // found, it returns a zero Config and no error.
 func Load() (Config, error) {
+	return LoadWithFallback("")
+}
+
+// LoadWithFallback searches for config from the current directory first.
+// If no config is found and fallbackDir is non-empty, it also searches
+// from fallbackDir upward. This allows config files placed alongside a
+// remote items directory to be discovered when running yat from elsewhere.
+func LoadWithFallback(fallbackDir string) (Config, error) {
 	dir, err := os.Getwd()
 	if err != nil {
 		return Config{}, err
 	}
 
-	for {
-		cfg, found, err := tryLoadFromDir(dir)
+	cfg, found, err := loadWalk(dir)
+	if err != nil {
+		return Config{}, err
+	}
+
+	if !found && fallbackDir != "" {
+		cfg, found, err = loadWalk(fallbackDir)
 		if err != nil {
 			return Config{}, err
 		}
+	}
+
+	if !found {
+		cfg.Defaults()
+	}
+
+	return cfg, nil
+}
+
+// loadWalk searches for a config file starting from startDir and walking up
+// to the filesystem root.
+func loadWalk(startDir string) (Config, bool, error) {
+	dir := startDir
+
+	for {
+		cfg, found, err := tryLoadFromDir(dir)
+		if err != nil {
+			return Config{}, false, err
+		}
 
 		if found {
-			return cfg, nil
+			return cfg, true, nil
 		}
 
 		parent := filepath.Dir(dir)
@@ -105,10 +137,7 @@ func Load() (Config, error) {
 		dir = parent
 	}
 
-	var cfg Config
-	cfg.Defaults()
-
-	return cfg, nil
+	return Config{}, false, nil
 }
 
 // tryLoadFromDir tries each config file name in the given directory.

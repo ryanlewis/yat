@@ -368,6 +368,92 @@ func TestStatusGroups_AllValid(t *testing.T) {
 	}
 }
 
+func TestLoadWithFallback_UsesItemsDir(t *testing.T) {
+	t.Chdir(t.TempDir()) // cwd has no config
+
+	itemsDir := t.TempDir()
+	content := []byte("readonly: true\nfield_aliases:\n  id: localId\n")
+	if err := os.WriteFile(filepath.Join(itemsDir, ".yat.yaml"), content, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := config.LoadWithFallback(itemsDir)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if !cfg.ReadOnly {
+		t.Error("expected ReadOnly from items-dir config")
+	}
+
+	if cfg.FieldAliases["id"] != "localId" {
+		t.Errorf("expected alias id→localId, got %q", cfg.FieldAliases["id"])
+	}
+}
+
+func TestLoadWithFallback_CwdTakesPrecedence(t *testing.T) {
+	cwdDir := t.TempDir()
+	t.Chdir(cwdDir)
+
+	cwdContent := []byte("readonly: false\n")
+	if err := os.WriteFile(filepath.Join(cwdDir, ".yat.yaml"), cwdContent, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	itemsDir := t.TempDir()
+	itemsContent := []byte("readonly: true\n")
+	if err := os.WriteFile(filepath.Join(itemsDir, ".yat.yaml"), itemsContent, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := config.LoadWithFallback(itemsDir)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if cfg.ReadOnly {
+		t.Error("expected cwd config (readonly=false) to take precedence over items-dir config")
+	}
+}
+
+func TestLoadWithFallback_EmptyFallback(t *testing.T) {
+	t.Chdir(t.TempDir())
+
+	cfg, err := config.LoadWithFallback("")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Should get defaults when no config found anywhere.
+	if cfg.Statuses.IsEmpty() {
+		t.Error("expected default statuses to be populated")
+	}
+}
+
+func TestLoadWithFallback_AncestorOfItemsDir(t *testing.T) {
+	t.Chdir(t.TempDir()) // cwd has no config
+
+	root := t.TempDir()
+	content := []byte("readonly: true\n")
+	if err := os.WriteFile(filepath.Join(root, ".yat.yaml"), content, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	itemsDir := filepath.Join(root, "project", "items")
+	if err := os.MkdirAll(itemsDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := config.LoadWithFallback(itemsDir)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if !cfg.ReadOnly {
+		t.Error("expected config found in ancestor of items dir")
+	}
+}
+
 func TestLoad_InvalidYAML(t *testing.T) {
 	dir := t.TempDir()
 	t.Chdir(dir)

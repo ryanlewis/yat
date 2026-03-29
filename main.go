@@ -59,7 +59,7 @@ func main() {
 		os.Exit(0)
 	}
 
-	cfg, cfgErr := config.Load()
+	cfg, cfgErr := config.LoadWithFallback(c.Dir)
 	if cfgErr != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", cfgErr)
 		os.Exit(1)
