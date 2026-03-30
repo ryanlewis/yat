@@ -68,8 +68,13 @@ func (g *Graph) Edges() []Edge {
 type BuildOption func(*Graph)
 
 // WithIsDone sets a custom function to determine if an item's status means "done".
+// A nil function is ignored, preserving the default.
 func WithIsDone(fn func(item.Status) bool) BuildOption {
-	return func(g *Graph) { g.isDone = fn }
+	return func(g *Graph) {
+		if fn != nil {
+			g.isDone = fn
+		}
+	}
 }
 
 // WithPhaseOrder sets an explicit phase ordering for ActivePhase.
@@ -80,7 +85,7 @@ func WithPhaseOrder(phases []string) BuildOption {
 }
 
 // Build constructs a dependency graph from a slice of items.
-// If isDone is nil, defaults to checking for item.StatusDone.
+// Defaults to checking for item.StatusDone; use WithIsDone to override.
 // Returns an error if any item references a dependency ID that does not exist.
 func Build(items []*item.Item, opts ...BuildOption) (*Graph, error) {
 	g := &Graph{

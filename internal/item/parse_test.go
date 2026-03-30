@@ -270,3 +270,58 @@ Body.
 		t.Errorf("FilePath = %q", item.FilePath)
 	}
 }
+
+// --- extractHeading ---
+
+func TestExtractHeading(t *testing.T) {
+	tests := []struct {
+		name string
+		body string
+		want string
+	}{
+		{"h1", "# Hello", "Hello"},
+		{"h2", "## Hello", "Hello"},
+		{"h3", "### Hello", "Hello"},
+		{"h4 ignored", "#### Hello", ""},
+		{"h1 with whitespace", "#  Spaced Out  ", "Spaced Out"},
+		{"no heading", "Just some text\nMore text", ""},
+		{"empty body", "", ""},
+		{"first heading wins", "## Second\n# First", "Second"},
+		{"text before heading", "Some intro text\n\n# Title", "Title"},
+		{"not a heading without space", "#NoSpace", ""},
+		{"heading inside code block", "```\n# Not a heading\n```\n## Real Title", "Real Title"},
+		{"heading inside code block with lang", "```python\n# Comment\n```\n# Title", "Title"},
+		{"unclosed code block hides all", "```\n# Hidden", ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := extractHeading([]byte(tt.body))
+			if got != tt.want {
+				t.Errorf("extractHeading() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestParse_TitleFromBody(t *testing.T) {
+	data := []byte("---\nid: TK-001\nstatus: draft\n---\n# My Title\n\nBody content.\n")
+	item, err := Parse(data, "test.md")
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	if item.Title != "My Title" {
+		t.Errorf("Title = %q, want My Title", item.Title)
+	}
+}
+
+func TestParse_FrontmatterTitleTakesPrecedence(t *testing.T) {
+	data := []byte("---\nid: TK-001\ntitle: Explicit\nstatus: draft\n---\n# Body Title\n")
+	item, err := Parse(data, "test.md")
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	if item.Title != "Explicit" {
+		t.Errorf("Title = %q, want Explicit", item.Title)
+	}
+}

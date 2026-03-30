@@ -91,7 +91,39 @@ func ParseWithOptions(data []byte, path string, opts ParseOptions) (*Item, error
 	item.FilePath = path
 	item.Body = string(body)
 
+	if item.Title == "" {
+		item.Title = extractHeading(body)
+	}
+
 	return &item, nil
+}
+
+// extractHeading returns the text of the first ATX heading (h1–h3) in the body, or "".
+// Headings inside fenced code blocks are ignored.
+func extractHeading(body []byte) string {
+	inFence := false
+
+	for _, line := range bytes.Split(body, []byte("\n")) {
+		trimmed := bytes.TrimSpace(line)
+
+		if bytes.HasPrefix(trimmed, []byte("```")) {
+			inFence = !inFence
+
+			continue
+		}
+
+		if inFence {
+			continue
+		}
+
+		for _, prefix := range []string{"# ", "## ", "### "} {
+			if bytes.HasPrefix(trimmed, []byte(prefix)) {
+				return string(bytes.TrimSpace(trimmed[len(prefix):]))
+			}
+		}
+	}
+
+	return ""
 }
 
 // remapAliases rewrites aliased frontmatter keys to their canonical names.

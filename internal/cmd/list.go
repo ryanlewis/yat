@@ -41,12 +41,25 @@ func (l *ListCmd) Run(rc *RunContext) error {
 		phase := l.Phase
 		if phase == "active" {
 			phase = rc.Graph.ActivePhase()
+			if phase == "" {
+				if rc.JSON {
+					return rc.writeJSON([]listItemJSON{})
+				}
+
+				rc.printf("No active phase.\n")
+
+				return nil
+			}
 		}
 
 		items = filterByPhase(items, phase)
 	}
 
 	if len(items) == 0 {
+		if rc.JSON {
+			return rc.writeJSON([]listItemJSON{})
+		}
+
 		rc.printf("No items found.\n")
 
 		return nil

@@ -229,6 +229,28 @@ func TestReady_CustomIsDone(t *testing.T) {
 	}
 }
 
+func TestWithIsDone_NilPreservesDefault(t *testing.T) {
+	items := []*item.Item{
+		{ID: "A", Status: item.StatusDone},
+		{ID: "B", Status: item.StatusDraft, Dependencies: []string{"A"}},
+	}
+
+	// Should not panic; nil isDone is ignored, default checks for StatusDone.
+	g, err := Build(items, WithIsDone(nil))
+	if err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+
+	ready := g.Ready()
+	if len(ready) != 1 || ready[0].ID != "B" {
+		ids := make([]string, len(ready))
+		for i, r := range ready {
+			ids[i] = r.ID
+		}
+		t.Errorf("ready = %v, want [B]", ids)
+	}
+}
+
 func TestBlocked_CustomIsDone(t *testing.T) {
 	isDone := func(s item.Status) bool { return s == "done" || s == "shipped" }
 	items := []*item.Item{

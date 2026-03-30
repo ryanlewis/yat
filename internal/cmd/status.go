@@ -120,24 +120,23 @@ func (s *StatusCmd) collect(rc *RunContext) (*statusData, error) {
 	}, nil
 }
 
+func toStatusGroups(m map[string]*groupAccum) map[string]statusGroup {
+	out := make(map[string]statusGroup, len(m))
+	for name, g := range m {
+		out[name] = statusGroup{Count: g.count, Points: g.points}
+	}
+
+	return out
+}
+
 func (s *StatusCmd) writeJSON(rc *RunContext, d *statusData) error {
-	byStatus := make(map[string]statusGroup, len(d.groups))
-	for name, g := range d.groups {
-		byStatus[name] = statusGroup{Count: g.count, Points: g.points}
-	}
-
-	phaseGroups := make(map[string]statusGroup, len(d.byPhase))
-	for name, g := range d.byPhase {
-		phaseGroups[name] = statusGroup{Count: g.count, Points: g.points}
-	}
-
 	return rc.writeJSON(statusJSON{
 		TotalItems:   d.totalItems,
 		TotalPoints:  d.totalPoints,
 		ByType:       d.byType,
-		ByStatus:     byStatus,
+		ByStatus:     toStatusGroups(d.groups),
 		ActivePhase:  d.activePhase,
-		ByPhase:      phaseGroups,
+		ByPhase:      toStatusGroups(d.byPhase),
 		ReadyNow:     d.readyIDs,
 		DeepestLayer: d.deepestLayer,
 		DeepestItems: d.deepestItems,

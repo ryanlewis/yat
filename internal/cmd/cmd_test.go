@@ -1291,6 +1291,43 @@ func TestListCmd_PhaseNoMatches(t *testing.T) {
 	}
 }
 
+func TestListCmd_PhaseActiveNoPhases(t *testing.T) {
+	items := []*item.Item{
+		{ID: "A", Status: item.StatusDraft},
+		{ID: "B", Status: item.StatusDraft},
+	}
+	rc, buf := newTestContext(t, items, false)
+
+	cmd := &ListCmd{Phase: "active"}
+	if err := cmd.Run(rc); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+
+	if !strings.Contains(buf.String(), "No active phase") {
+		t.Errorf("expected 'No active phase' message, got:\n%s", buf.String())
+	}
+}
+
+func TestListCmd_PhaseActiveNoPhases_JSON(t *testing.T) {
+	items := []*item.Item{
+		{ID: "A", Status: item.StatusDraft},
+	}
+	rc, buf := newTestContext(t, items, true)
+
+	cmd := &ListCmd{Phase: "active"}
+	if err := cmd.Run(rc); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+
+	var result []listItemJSON
+	if err := json.Unmarshal(buf.Bytes(), &result); err != nil {
+		t.Fatalf("JSON unmarshal: %v", err)
+	}
+	if len(result) != 0 {
+		t.Errorf("expected empty array, got %d items", len(result))
+	}
+}
+
 // --- pluralizeType ---
 
 func TestPluralizeType(t *testing.T) {
