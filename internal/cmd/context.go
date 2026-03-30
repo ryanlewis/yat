@@ -21,6 +21,7 @@ type RunContext struct {
 	Dir         string
 	ReadOnly    bool
 	Stdout      io.Writer
+	Styles      *Styles
 	Statuses    config.StatusGroups
 	StatusField string // "status" or the configured alias
 }
@@ -76,9 +77,10 @@ func NewRunContext(dir string, jsonOutput bool, cfg *config.Config) (*RunContext
 		JSON:        jsonOutput,
 		Dir:         dir,
 		ReadOnly:    cfg.ReadOnly,
+		Stdout:      os.Stdout,
+		Styles:      newStyles(os.Stdout, cfg.Statuses),
 		Statuses:    cfg.Statuses,
 		StatusField: statusField,
-		Stdout:      os.Stdout,
 	}, nil
 }
 
@@ -102,4 +104,12 @@ func (rc *RunContext) newTabWriter() *tabwriter.Writer {
 
 func (rc *RunContext) printf(format string, args ...any) {
 	fmt.Fprintf(rc.Stdout, format, args...)
+}
+
+func (rc *RunContext) styles() *Styles {
+	if rc.Styles == nil {
+		rc.Styles = newStyles(rc.Stdout, rc.Statuses)
+	}
+
+	return rc.Styles
 }

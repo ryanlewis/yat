@@ -144,9 +144,10 @@ func (s *StatusCmd) writeJSON(rc *RunContext, d *statusData) error {
 }
 
 func (s *StatusCmd) writeText(rc *RunContext, d *statusData) error {
+	st := rc.styles()
 	typeParts := formatTypeCounts(d.byType)
-	rc.printf("%d items: %s\n", d.totalItems, strings.Join(typeParts, ", "))
-	rc.printf("Total points: %d\n\n", d.totalPoints)
+	rc.printf("%s items: %s\n", st.Bold(fmt.Sprintf("%d", d.totalItems)), strings.Join(typeParts, ", "))
+	rc.printf("Total points: %s\n\n", st.Bold(fmt.Sprintf("%d", d.totalPoints)))
 
 	w := rc.newTabWriter()
 	for _, entry := range []struct {

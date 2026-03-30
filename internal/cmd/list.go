@@ -132,6 +132,7 @@ func sortByPriority(items []groupedItem) {
 }
 
 func (l *ListCmd) runText(rc *RunContext, groups []itemGroup) error {
+	s := rc.styles()
 	first := true
 
 	for _, g := range groups {
@@ -145,18 +146,18 @@ func (l *ListCmd) runText(rc *RunContext, groups []itemGroup) error {
 
 		first = false
 
-		rc.printf("%s\n", strings.ToUpper(g.label))
+		rc.printf("%s", s.GroupHeader(g.label))
 
 		w := rc.newTabWriter()
 
 		for _, gi := range g.items {
 			if len(gi.waitingOn) > 0 {
-				fmt.Fprintf(w, "  %s\t%s\t%s\t%s\twaiting on: %s\n",
-					gi.item.ID, gi.item.Priority, gi.item.Type, gi.item.Title,
-					strings.Join(gi.waitingOn, ", "))
+				fmt.Fprintf(w, "  %s\t%s\t%s\t%s\t%s %s\n",
+					gi.item.ID, s.Priority(gi.item.Priority), gi.item.Type, gi.item.Title,
+					s.Dim("waiting on:"), strings.Join(gi.waitingOn, ", "))
 			} else {
 				fmt.Fprintf(w, "  %s\t%s\t%s\t%s\n",
-					gi.item.ID, gi.item.Priority, gi.item.Type, gi.item.Title)
+					gi.item.ID, s.Priority(gi.item.Priority), gi.item.Type, gi.item.Title)
 			}
 		}
 

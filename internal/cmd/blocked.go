@@ -37,12 +37,15 @@ func (b *BlockedCmd) Run(rc *RunContext) error {
 		return nil
 	}
 
+	s := rc.styles()
+
 	for _, item := range items {
 		waiting := rc.Graph.WaitingOn(item.ID)
 
-		rc.printf("  %s  %s\n", item.ID, item.Title)
+		rc.printf("  %s  %s\n", s.Bold(item.ID), item.Title)
 
-		fmt.Fprintf(rc.Stdout, "          waiting on: %s\n\n", strings.Join(waiting, ", "))
+		fmt.Fprintf(rc.Stdout, "          %s %s\n\n",
+			s.Dim("waiting on:"), strings.Join(waiting, ", "))
 	}
 
 	return nil

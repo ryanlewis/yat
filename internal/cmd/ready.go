@@ -36,12 +36,15 @@ func (r *ReadyCmd) Run(rc *RunContext) error {
 		return nil
 	}
 
-	rc.printf("READY\n")
+	s := rc.styles()
+
+	rc.printf("%s", s.GroupHeader("ready"))
 
 	w := rc.newTabWriter()
 
 	for _, item := range items {
-		fmt.Fprintf(w, "  %s\t%s\t%s\t%s\n", item.ID, item.Priority, item.Type, item.Title)
+		fmt.Fprintf(w, "  %s\t%s\t%s\t%s\n",
+			item.ID, s.Priority(item.Priority), item.Type, item.Title)
 	}
 
 	return w.Flush()

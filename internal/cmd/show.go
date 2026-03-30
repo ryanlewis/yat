@@ -47,13 +47,17 @@ func (s *ShowCmd) Run(rc *RunContext) error {
 		})
 	}
 
-	rc.printf("%s: %s\n", item.ID, item.Title)
+	sty := rc.styles()
 
-	fmt.Fprintf(rc.Stdout, "Priority: %s  |  Type: %s  |  Points: %d  |  Phase: %s  |  Status: %s\n",
-		item.Priority, item.Type, item.Points, item.Phase, item.Status)
+	rc.printf("%s", sty.Header(item.ID, item.Title))
+
+	fmt.Fprintf(rc.Stdout, "%s  |  Type: %s  |  Points: %d  |  Phase: %s  |  %s\n",
+		sty.Dim("Priority: ")+sty.Priority(item.Priority),
+		item.Type, item.Points, item.Phase,
+		sty.Status(item.Status))
 
 	if len(item.Dependencies) > 0 {
-		rc.printf("Dependencies:")
+		rc.printf("%s", sty.Dim("Dependencies:"))
 
 		for _, dep := range item.Dependencies {
 			fmt.Fprintf(rc.Stdout, " %s", dep)
@@ -63,7 +67,7 @@ func (s *ShowCmd) Run(rc *RunContext) error {
 	}
 
 	if item.Body != "" {
-		rc.printf("\n%s", item.Body)
+		rc.printf("\n%s", sty.RenderBody(item.Body))
 	}
 
 	return nil

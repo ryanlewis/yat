@@ -43,13 +43,16 @@ func (n *NextCmd) Run(rc *RunContext) error {
 		})
 	}
 
-	rc.printf("%s: %s\n", item.ID, item.Title)
+	s := rc.styles()
 
-	fmt.Fprintf(rc.Stdout, "Priority: %s  |  Type: %s  |  Points: %d  |  Phase: %s\n",
-		item.Priority, item.Type, item.Points, item.Phase)
+	rc.printf("%s", s.Header(item.ID, item.Title))
+
+	fmt.Fprintf(rc.Stdout, "%s  |  Type: %s  |  Points: %d  |  Phase: %s\n",
+		s.Dim("Priority: ")+s.Priority(item.Priority),
+		item.Type, item.Points, item.Phase)
 
 	if item.Body != "" {
-		rc.printf("\n%s", item.Body)
+		rc.printf("\n%s", s.RenderBody(item.Body))
 	}
 
 	return nil
