@@ -83,7 +83,7 @@ type: Task
 priority: Critical
 points: 2
 dependencies: []
-status: draft
+status: todo
 phase: "1"
 ---
 
@@ -98,7 +98,7 @@ type: Task
 priority: High
 points: 3
 dependencies: [TK-001]
-status: draft
+status: todo
 phase: "1"
 ---
 
@@ -113,7 +113,7 @@ type: Story
 priority: Critical
 points: 8
 dependencies: [TK-001, TK-002]
-status: draft
+status: todo
 phase: "2"
 ---
 
@@ -247,6 +247,81 @@ func TestE2E_Ready_EmptyDir(t *testing.T) {
 	}
 	if !strings.Contains(stdout, "No items are ready") {
 		t.Errorf("expected empty message, got:\n%s", stdout)
+	}
+}
+
+func TestE2E_Ready_AllFlag(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	items := filepath.Join(dir, "spec")
+	os.MkdirAll(items, 0o755)
+
+	writeItem(t, items, "a.md", "---\nid: A\ntitle: \"Todo item\"\nstatus: todo\n---\n")
+	writeItem(t, items, "b.md", "---\nid: B\ntitle: \"Active item\"\nstatus: in-progress\n---\n")
+
+	// Without --all: only todo items
+	stdout, _, code := run(t, dir, "ready")
+	if code != 0 {
+		t.Fatalf("exit code = %d", code)
+	}
+	if !strings.Contains(stdout, "A") {
+		t.Errorf("expected A in ready output, got:\n%s", stdout)
+	}
+	if strings.Contains(stdout, "B") {
+		t.Errorf("expected B excluded from ready output, got:\n%s", stdout)
+	}
+
+	// With --all: includes in-progress items
+	stdout, _, code = run(t, dir, "ready", "--all")
+	if code != 0 {
+		t.Fatalf("ready --all exit code = %d", code)
+	}
+	if !strings.Contains(stdout, "A") || !strings.Contains(stdout, "B") {
+		t.Errorf("expected both A and B in ready --all output, got:\n%s", stdout)
+	}
+
+	// Short flag -a also works
+	stdout, _, code = run(t, dir, "ready", "-a")
+	if code != 0 {
+		t.Fatalf("ready -a exit code = %d", code)
+	}
+	if !strings.Contains(stdout, "B") {
+		t.Errorf("expected B in ready -a output, got:\n%s", stdout)
+	}
+}
+
+func TestE2E_Ready_AllFlag_JSON(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	items := filepath.Join(dir, "spec")
+	os.MkdirAll(items, 0o755)
+
+	writeItem(t, items, "a.md", "---\nid: A\ntitle: \"Todo\"\nstatus: todo\n---\n")
+	writeItem(t, items, "b.md", "---\nid: B\ntitle: \"Active\"\nstatus: in-progress\n---\n")
+
+	stdout, _, code := run(t, dir, "ready", "--all", "-j")
+	if code != 0 {
+		t.Fatalf("exit code = %d", code)
+	}
+
+	var result []map[string]any
+	if err := json.Unmarshal([]byte(stdout), &result); err != nil {
+		t.Fatalf("invalid JSON: %v", err)
+	}
+	if len(result) != 2 {
+		t.Fatalf("expected 2 items, got %d", len(result))
+	}
+
+	// Verify status field is present and distinguishes items
+	statuses := map[string]string{}
+	for _, r := range result {
+		statuses[r["id"].(string)] = r["status"].(string)
+	}
+	if statuses["A"] != "todo" {
+		t.Errorf("A status = %q, want todo", statuses["A"])
+	}
+	if statuses["B"] != "in-progress" {
+		t.Errorf("B status = %q, want in-progress", statuses["B"])
 	}
 }
 
@@ -544,7 +619,7 @@ func TestE2E_Complete_StillBlocked(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("exit code = %d", code)
 	}
-	// ST-001 depends on TK-001 (now done) and TK-002 (still draft) → still blocked
+	// ST-001 depends on TK-001 (now done) and TK-002 (still todo) → still blocked
 	if !strings.Contains(stdout, "Still blocked") {
 		t.Errorf("expected 'Still blocked' section, got:\n%s", stdout)
 	}
@@ -644,7 +719,7 @@ func TestE2E_DirFlag(t *testing.T) {
 	custom := filepath.Join(dir, "custom-items")
 	os.MkdirAll(custom, 0o755)
 
-	writeItem(t, custom, "item.md", "---\nid: X-001\ntitle: \"Custom dir item\"\nstatus: draft\n---\n")
+	writeItem(t, custom, "item.md", "---\nid: X-001\ntitle: \"Custom dir item\"\nstatus: todo\n---\n")
 
 	stdout, _, code := run(t, dir, "--dir", custom, "ready")
 	if code != 0 {
@@ -673,7 +748,7 @@ func TestE2E_YAT_DIR_Env(t *testing.T) {
 	custom := filepath.Join(dir, "env-items")
 	os.MkdirAll(custom, 0o755)
 
-	writeItem(t, custom, "item.md", "---\nid: ENV-001\ntitle: \"Env dir item\"\nstatus: draft\n---\n")
+	writeItem(t, custom, "item.md", "---\nid: ENV-001\ntitle: \"Env dir item\"\nstatus: todo\n---\n")
 
 	cmd := exec.Command(yatBin(), "ready")
 	cmd.Dir = dir
@@ -695,8 +770,8 @@ func TestE2E_DuplicateIDs(t *testing.T) {
 	items := filepath.Join(dir, "spec")
 	os.MkdirAll(items, 0o755)
 
-	writeItem(t, items, "a.md", "---\nid: DUP\ntitle: \"First\"\nstatus: draft\n---\n")
-	writeItem(t, items, "b.md", "---\nid: DUP\ntitle: \"Second\"\nstatus: draft\n---\n")
+	writeItem(t, items, "a.md", "---\nid: DUP\ntitle: \"First\"\nstatus: todo\n---\n")
+	writeItem(t, items, "b.md", "---\nid: DUP\ntitle: \"Second\"\nstatus: todo\n---\n")
 
 	_, stderr, code := run(t, dir, "status")
 	if code == 0 {
@@ -713,8 +788,8 @@ func TestE2E_CyclicDeps(t *testing.T) {
 	items := filepath.Join(dir, "spec")
 	os.MkdirAll(items, 0o755)
 
-	writeItem(t, items, "a.md", "---\nid: A\ntitle: \"A\"\nstatus: draft\ndependencies: [B]\n---\n")
-	writeItem(t, items, "b.md", "---\nid: B\ntitle: \"B\"\nstatus: draft\ndependencies: [A]\n---\n")
+	writeItem(t, items, "a.md", "---\nid: A\ntitle: \"A\"\nstatus: todo\ndependencies: [B]\n---\n")
+	writeItem(t, items, "b.md", "---\nid: B\ntitle: \"B\"\nstatus: todo\ndependencies: [A]\n---\n")
 
 	_, stderr, code := run(t, dir, "status")
 	if code == 0 {
@@ -748,7 +823,7 @@ func TestE2E_UnknownDependency(t *testing.T) {
 	items := filepath.Join(dir, "spec")
 	os.MkdirAll(items, 0o755)
 
-	writeItem(t, items, "a.md", "---\nid: A\ntitle: \"A\"\nstatus: draft\ndependencies: [GHOST]\n---\n")
+	writeItem(t, items, "a.md", "---\nid: A\ntitle: \"A\"\nstatus: todo\ndependencies: [GHOST]\n---\n")
 
 	_, stderr, code := run(t, dir, "status")
 	if code == 0 {
@@ -769,8 +844,8 @@ func TestE2E_NoiseFilesIgnored(t *testing.T) {
 	// Add noise files
 	writeItem(t, items, "notes.md", "# Just notes\nNo frontmatter.\n")
 	writeItem(t, items, "design.md", "---\ntitle: \"Design doc\"\nauthor: \"Someone\"\n---\nNot an item.\n")
-	writeItem(t, items, "ignored.md", "---\nid: SKIP-001\nstatus: draft\nyat: ignore\n---\n")
-	writeItem(t, items, "data.txt", "id: SNEAKY\nstatus: draft\n")
+	writeItem(t, items, "ignored.md", "---\nid: SKIP-001\nstatus: todo\nyat: ignore\n---\n")
+	writeItem(t, items, "data.txt", "id: SNEAKY\nstatus: todo\n")
 
 	stdout, _, code := run(t, dir, "status", "--json")
 	if code != 0 {
@@ -794,8 +869,8 @@ func TestE2E_MissingIDWarning(t *testing.T) {
 	items := filepath.Join(dir, "spec")
 	os.MkdirAll(items, 0o755)
 
-	writeItem(t, items, "valid.md", "---\nid: OK-001\nstatus: draft\n---\n")
-	writeItem(t, items, "missing-id.md", "---\ntype: Task\nstatus: draft\n---\n")
+	writeItem(t, items, "valid.md", "---\nid: OK-001\nstatus: todo\n---\n")
+	writeItem(t, items, "missing-id.md", "---\ntype: Task\nstatus: todo\n---\n")
 
 	stdout, stderr, code := run(t, dir, "status")
 	if code != 0 {

@@ -35,7 +35,7 @@ All commands support --json for structured output.
 
 ## Key Concepts
 
-- Items have a status: draft → in-progress → done.
+- Items have a status: todo → in-progress → done.
 - Items have a priority: Critical > High > Medium > Low.
 - Items can depend on other items. A blocked item cannot be started
   until all its dependencies are done.

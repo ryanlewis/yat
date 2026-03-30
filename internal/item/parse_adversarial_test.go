@@ -24,52 +24,52 @@ func TestParse_MalformedYAML(t *testing.T) {
 		},
 		{
 			name:    "tab indentation in YAML",
-			input:   "---\nid: TK-001\n\ttitle: \"Tabs\"\nstatus: draft\n---\n",
+			input:   "---\nid: TK-001\n\ttitle: \"Tabs\"\nstatus: todo\n---\n",
 			wantErr: true,
 		},
 		{
 			name:    "duplicate keys in YAML rejected",
-			input:   "---\nid: TK-001\nid: TK-002\nstatus: draft\n---\n",
+			input:   "---\nid: TK-001\nid: TK-002\nstatus: todo\n---\n",
 			wantErr: true, // yaml.v3 is strict about duplicate keys
 		},
 		{
 			name:    "YAML anchor and alias",
-			input:   "---\nid: TK-001\ntitle: &t \"Anchor\"\nalias: *t\nstatus: draft\n---\n",
+			input:   "---\nid: TK-001\ntitle: &t \"Anchor\"\nalias: *t\nstatus: todo\n---\n",
 			wantErr: false,
 		},
 		{
 			name:    "YAML with colon in unquoted value",
-			input:   "---\nid: TK-001\ntitle: This: has a colon\nstatus: draft\n---\n",
+			input:   "---\nid: TK-001\ntitle: This: has a colon\nstatus: todo\n---\n",
 			wantErr: true, // YAML rejects unquoted colons in values
 		},
 		{
 			name:    "YAML with multiline string",
-			input:   "---\nid: TK-001\ntitle: |\n  Line 1\n  Line 2\nstatus: draft\n---\n",
+			input:   "---\nid: TK-001\ntitle: |\n  Line 1\n  Line 2\nstatus: todo\n---\n",
 			wantErr: false,
 		},
 		{
 			name:    "YAML with flow mapping (ignored fields)",
-			input:   "---\nid: TK-001\nextra: {nested: value}\nstatus: draft\n---\n",
+			input:   "---\nid: TK-001\nextra: {nested: value}\nstatus: todo\n---\n",
 			wantErr: false,
 		},
 		{
 			name:    "YAML null id with status triggers ErrMissingID",
-			input:   "---\nid: null\nstatus: draft\n---\n",
-			wantErr: true, // id="" + status="draft" → looksLikeItem → ErrMissingID
+			input:   "---\nid: null\nstatus: todo\n---\n",
+			wantErr: true, // id="" + status="todo" → looksLikeItem → ErrMissingID
 		},
 		{
 			name:    "YAML empty id string with status triggers ErrMissingID",
-			input:   "---\nid: \"\"\nstatus: draft\n---\n",
-			wantErr: true, // id="" + status="draft" → looksLikeItem → ErrMissingID
+			input:   "---\nid: \"\"\nstatus: todo\n---\n",
+			wantErr: true, // id="" + status="todo" → looksLikeItem → ErrMissingID
 		},
 		{
 			name:    "YAML boolean id",
-			input:   "---\nid: true\nstatus: draft\n---\n",
+			input:   "---\nid: true\nstatus: todo\n---\n",
 			wantErr: false, // YAML unmarshals true to string "true"
 		},
 		{
 			name:    "YAML numeric id",
-			input:   "---\nid: 12345\nstatus: draft\n---\n",
+			input:   "---\nid: 12345\nstatus: todo\n---\n",
 			wantErr: false, // YAML unmarshals 12345 to string "12345"
 		},
 	}
@@ -124,17 +124,17 @@ func TestParse_DelimiterEdgeCases(t *testing.T) {
 		},
 		{
 			name:   "multiple --- in body preserved",
-			input:  "---\nid: TK-001\nstatus: draft\n---\n\n---\nThis is a separator\n---\n",
+			input:  "---\nid: TK-001\nstatus: todo\n---\n\n---\nThis is a separator\n---\n",
 			wantID: "TK-001",
 		},
 		{
 			name:   "leading newlines before frontmatter",
-			input:  "\n\n\n---\nid: TK-001\nstatus: draft\n---\n",
+			input:  "\n\n\n---\nid: TK-001\nstatus: todo\n---\n",
 			wantID: "TK-001",
 		},
 		{
 			name:   "leading CRLF before frontmatter",
-			input:  "\r\n\r\n---\nid: TK-001\nstatus: draft\n---\n",
+			input:  "\r\n\r\n---\nid: TK-001\nstatus: todo\n---\n",
 			wantID: "TK-001",
 		},
 		{
@@ -149,17 +149,17 @@ func TestParse_DelimiterEdgeCases(t *testing.T) {
 		},
 		{
 			name:    "closing delimiter with trailing spaces",
-			input:   "---\nid: TK-001\nstatus: draft\n--- \n",
+			input:   "---\nid: TK-001\nstatus: todo\n--- \n",
 			wantNil: true, // "--- " is not "---" followed by \n/\r/EOF
 		},
 		{
 			name:   "closing delimiter at exact EOF",
-			input:  "---\nid: TK-001\nstatus: draft\n---",
+			input:  "---\nid: TK-001\nstatus: todo\n---",
 			wantID: "TK-001",
 		},
 		{
 			name:    "CR-only line endings",
-			input:   "---\rid: TK-001\rstatus: draft\r---\r",
+			input:   "---\rid: TK-001\rstatus: todo\r---\r",
 			wantNil: true, // opening --- must be followed by \n or \r, and \r is valid...
 		},
 	}
@@ -207,35 +207,35 @@ func TestParse_Unicode(t *testing.T) {
 	}{
 		{
 			name:      "unicode in title",
-			input:     "---\nid: TK-001\ntitle: \"Ünïcödé tïtlé\"\nstatus: draft\n---\n\nBody.\n",
+			input:     "---\nid: TK-001\ntitle: \"Ünïcödé tïtlé\"\nstatus: todo\n---\n\nBody.\n",
 			wantID:    "TK-001",
 			wantTitle: "Ünïcödé tïtlé",
 		},
 		{
 			name:   "emoji in ID",
-			input:  "---\nid: \"\\U0001F680-launch\"\nstatus: draft\n---\n",
+			input:  "---\nid: \"\\U0001F680-launch\"\nstatus: todo\n---\n",
 			wantID: "🚀-launch",
 		},
 		{
 			name:     "CJK characters in body",
-			input:    "---\nid: TK-001\nstatus: draft\n---\n\n日本語テスト\n",
+			input:    "---\nid: TK-001\nstatus: todo\n---\n\n日本語テスト\n",
 			wantID:   "TK-001",
 			wantBody: "\n日本語テスト\n",
 		},
 		{
 			name:      "RTL text in title",
-			input:     "---\nid: TK-001\ntitle: \"مرحبا\"\nstatus: draft\n---\n",
+			input:     "---\nid: TK-001\ntitle: \"مرحبا\"\nstatus: todo\n---\n",
 			wantID:    "TK-001",
 			wantTitle: "مرحبا",
 		},
 		{
 			name:   "ID with spaces (quoted)",
-			input:  "---\nid: \"has spaces\"\nstatus: draft\n---\n",
+			input:  "---\nid: \"has spaces\"\nstatus: todo\n---\n",
 			wantID: "has spaces",
 		},
 		{
 			name:   "ID with special YAML chars",
-			input:  "---\nid: \"colon:slash/bracket[]\"\nstatus: draft\n---\n",
+			input:  "---\nid: \"colon:slash/bracket[]\"\nstatus: todo\n---\n",
 			wantID: "colon:slash/bracket[]",
 		},
 	}
@@ -344,27 +344,27 @@ func TestParse_PointsBoundary(t *testing.T) {
 	}{
 		{
 			name:       "zero points",
-			input:      "---\nid: TK-001\npoints: 0\nstatus: draft\n---\n",
+			input:      "---\nid: TK-001\npoints: 0\nstatus: todo\n---\n",
 			wantPoints: 0,
 		},
 		{
 			name:       "negative points",
-			input:      "---\nid: TK-001\npoints: -5\nstatus: draft\n---\n",
+			input:      "---\nid: TK-001\npoints: -5\nstatus: todo\n---\n",
 			wantPoints: -5,
 		},
 		{
 			name:       "large points",
-			input:      "---\nid: TK-001\npoints: 999999\nstatus: draft\n---\n",
+			input:      "---\nid: TK-001\npoints: 999999\nstatus: todo\n---\n",
 			wantPoints: 999999,
 		},
 		{
 			name:       "float points silently truncated",
-			input:      "---\nid: TK-001\npoints: 3.5\nstatus: draft\n---\n",
+			input:      "---\nid: TK-001\npoints: 3.5\nstatus: todo\n---\n",
 			wantPoints: 3, // YAML silently truncates float to int
 		},
 		{
 			name:    "string points",
-			input:   "---\nid: TK-001\npoints: \"three\"\nstatus: draft\n---\n",
+			input:   "---\nid: TK-001\npoints: \"three\"\nstatus: todo\n---\n",
 			wantErr: true,
 		},
 	}
@@ -401,27 +401,27 @@ func TestParse_DependenciesEdgeCases(t *testing.T) {
 	}{
 		{
 			name:     "nil dependencies (not specified)",
-			input:    "---\nid: TK-001\nstatus: draft\n---\n",
+			input:    "---\nid: TK-001\nstatus: todo\n---\n",
 			wantDeps: nil,
 		},
 		{
 			name:     "empty list",
-			input:    "---\nid: TK-001\ndependencies: []\nstatus: draft\n---\n",
+			input:    "---\nid: TK-001\ndependencies: []\nstatus: todo\n---\n",
 			wantDeps: []string{},
 		},
 		{
 			name:     "single dependency",
-			input:    "---\nid: TK-001\ndependencies: [A]\nstatus: draft\n---\n",
+			input:    "---\nid: TK-001\ndependencies: [A]\nstatus: todo\n---\n",
 			wantDeps: []string{"A"},
 		},
 		{
 			name:     "multiline list syntax",
-			input:    "---\nid: TK-001\ndependencies:\n  - A\n  - B\n  - C\nstatus: draft\n---\n",
+			input:    "---\nid: TK-001\ndependencies:\n  - A\n  - B\n  - C\nstatus: todo\n---\n",
 			wantDeps: []string{"A", "B", "C"},
 		},
 		{
 			name:     "duplicate dependencies",
-			input:    "---\nid: TK-001\ndependencies: [A, A, A]\nstatus: draft\n---\n",
+			input:    "---\nid: TK-001\ndependencies: [A, A, A]\nstatus: todo\n---\n",
 			wantDeps: []string{"A", "A", "A"}, // no dedup at parse level
 		},
 	}
@@ -463,22 +463,22 @@ func TestParse_BodyPreservation(t *testing.T) {
 	}{
 		{
 			name:     "empty body",
-			input:    "---\nid: TK-001\nstatus: draft\n---\n",
+			input:    "---\nid: TK-001\nstatus: todo\n---\n",
 			wantBody: "",
 		},
 		{
 			name:     "body with frontmatter-like markers",
-			input:    "---\nid: TK-001\nstatus: draft\n---\n---\nfake frontmatter\n---\n",
+			input:    "---\nid: TK-001\nstatus: todo\n---\n---\nfake frontmatter\n---\n",
 			wantBody: "---\nfake frontmatter\n---\n",
 		},
 		{
 			name:     "body with YAML content",
-			input:    "---\nid: TK-001\nstatus: draft\n---\nid: fake\nstatus: in-progress\n",
+			input:    "---\nid: TK-001\nstatus: todo\n---\nid: fake\nstatus: in-progress\n",
 			wantBody: "id: fake\nstatus: in-progress\n",
 		},
 		{
 			name:     "body with only newlines",
-			input:    "---\nid: TK-001\nstatus: draft\n---\n\n\n\n",
+			input:    "---\nid: TK-001\nstatus: todo\n---\n\n\n\n",
 			wantBody: "\n\n\n",
 		},
 	}
@@ -514,7 +514,7 @@ func TestParse_LooksLikeItem(t *testing.T) {
 		},
 		{
 			name:    "has status but no id",
-			input:   "---\nstatus: draft\n---\n",
+			input:   "---\nstatus: todo\n---\n",
 			wantErr: true,
 		},
 		{
@@ -585,7 +585,7 @@ func TestLoadAll_NonMDFilesIgnored(t *testing.T) {
 	dir := t.TempDir()
 	os.WriteFile(filepath.Join(dir, "readme.txt"), []byte("not markdown"), 0o644)
 	os.WriteFile(filepath.Join(dir, "data.json"), []byte("{}"), 0o644)
-	os.WriteFile(filepath.Join(dir, "item.md"), []byte("---\nid: TK-001\nstatus: draft\n---\n"), 0o644)
+	os.WriteFile(filepath.Join(dir, "item.md"), []byte("---\nid: TK-001\nstatus: todo\n---\n"), 0o644)
 
 	items, err := LoadAll(dir)
 	if err != nil {
@@ -601,8 +601,8 @@ func TestLoadAll_NestedDirectories(t *testing.T) {
 	sub := filepath.Join(dir, "phase1", "tasks")
 	os.MkdirAll(sub, 0o755)
 
-	os.WriteFile(filepath.Join(dir, "root.md"), []byte("---\nid: ROOT\nstatus: draft\n---\n"), 0o644)
-	os.WriteFile(filepath.Join(sub, "nested.md"), []byte("---\nid: NESTED\nstatus: draft\n---\n"), 0o644)
+	os.WriteFile(filepath.Join(dir, "root.md"), []byte("---\nid: ROOT\nstatus: todo\n---\n"), 0o644)
+	os.WriteFile(filepath.Join(sub, "nested.md"), []byte("---\nid: NESTED\nstatus: todo\n---\n"), 0o644)
 
 	items, err := LoadAll(dir)
 	if err != nil {
@@ -616,7 +616,7 @@ func TestLoadAll_NestedDirectories(t *testing.T) {
 func TestLoadAll_InvalidItemStopsLoad(t *testing.T) {
 	dir := t.TempDir()
 	// Valid item
-	os.WriteFile(filepath.Join(dir, "a.md"), []byte("---\nid: A\nstatus: draft\n---\n"), 0o644)
+	os.WriteFile(filepath.Join(dir, "a.md"), []byte("---\nid: A\nstatus: todo\n---\n"), 0o644)
 	// Invalid item (bad status)
 	os.WriteFile(filepath.Join(dir, "b.md"), []byte("---\nid: B\nstatus: banana\n---\n"), 0o644)
 
@@ -631,9 +631,9 @@ func TestLoadAll_InvalidItemStopsLoad(t *testing.T) {
 
 func TestLoadAll_MissingIDWarnsButContinues(t *testing.T) {
 	dir := t.TempDir()
-	os.WriteFile(filepath.Join(dir, "a.md"), []byte("---\nid: A\nstatus: draft\n---\n"), 0o644)
+	os.WriteFile(filepath.Join(dir, "a.md"), []byte("---\nid: A\nstatus: todo\n---\n"), 0o644)
 	// Item-like but no ID — should warn but not fail
-	os.WriteFile(filepath.Join(dir, "b.md"), []byte("---\ntype: Task\nstatus: draft\n---\n"), 0o644)
+	os.WriteFile(filepath.Join(dir, "b.md"), []byte("---\ntype: Task\nstatus: todo\n---\n"), 0o644)
 
 	items, err := LoadAll(dir)
 	if err != nil {
@@ -647,7 +647,7 @@ func TestLoadAll_MissingIDWarnsButContinues(t *testing.T) {
 func TestLoadAll_MDWithNoFrontmatterSkipped(t *testing.T) {
 	dir := t.TempDir()
 	os.WriteFile(filepath.Join(dir, "readme.md"), []byte("# README\nJust a doc.\n"), 0o644)
-	os.WriteFile(filepath.Join(dir, "item.md"), []byte("---\nid: TK-001\nstatus: draft\n---\n"), 0o644)
+	os.WriteFile(filepath.Join(dir, "item.md"), []byte("---\nid: TK-001\nstatus: todo\n---\n"), 0o644)
 
 	items, err := LoadAll(dir)
 	if err != nil {
@@ -742,27 +742,27 @@ func TestParse_YatIgnore(t *testing.T) {
 	}{
 		{
 			name:    "yat ignore skips file",
-			input:   "---\nid: TK-001\nstatus: draft\nyat: ignore\n---\nBody.\n",
+			input:   "---\nid: TK-001\nstatus: todo\nyat: ignore\n---\nBody.\n",
 			wantNil: true,
 		},
 		{
 			name:    "yat ignore with spaces",
-			input:   "---\nid: TK-001\nstatus: draft\nyat:   ignore  \n---\n",
+			input:   "---\nid: TK-001\nstatus: todo\nyat:   ignore  \n---\n",
 			wantNil: true,
 		},
 		{
 			name:    "yat ignore in comma list",
-			input:   "---\nid: TK-001\nstatus: draft\nyat: \"something, ignore, other\"\n---\n",
+			input:   "---\nid: TK-001\nstatus: todo\nyat: \"something, ignore, other\"\n---\n",
 			wantNil: true,
 		},
 		{
 			name:    "yat with other directive does not skip",
-			input:   "---\nid: TK-001\nstatus: draft\nyat: draft\n---\n",
+			input:   "---\nid: TK-001\nstatus: todo\nyat: draft\n---\n",
 			wantNil: false,
 		},
 		{
 			name:    "no yat field does not skip",
-			input:   "---\nid: TK-001\nstatus: draft\n---\n",
+			input:   "---\nid: TK-001\nstatus: todo\n---\n",
 			wantNil: false,
 		},
 		{
@@ -772,7 +772,7 @@ func TestParse_YatIgnore(t *testing.T) {
 		},
 		{
 			name:    "yat ignore prevents ErrMissingID",
-			input:   "---\nstatus: draft\ntype: Task\nyat: ignore\n---\n",
+			input:   "---\nstatus: todo\ntype: Task\nyat: ignore\n---\n",
 			wantNil: true,
 		},
 	}
@@ -798,8 +798,8 @@ func TestParse_YatIgnore(t *testing.T) {
 
 func TestLoadAll_YatIgnoreSkipsFile(t *testing.T) {
 	dir := t.TempDir()
-	os.WriteFile(filepath.Join(dir, "item.md"), []byte("---\nid: TK-001\nstatus: draft\n---\n"), 0o644)
-	os.WriteFile(filepath.Join(dir, "notes.md"), []byte("---\nid: NOTES-001\nstatus: draft\nyat: ignore\n---\nMeeting notes.\n"), 0o644)
+	os.WriteFile(filepath.Join(dir, "item.md"), []byte("---\nid: TK-001\nstatus: todo\n---\n"), 0o644)
+	os.WriteFile(filepath.Join(dir, "notes.md"), []byte("---\nid: NOTES-001\nstatus: todo\nyat: ignore\n---\nMeeting notes.\n"), 0o644)
 
 	items, err := LoadAll(dir)
 	if err != nil {
@@ -816,7 +816,7 @@ func TestLoadAll_YatIgnoreSkipsFile(t *testing.T) {
 // --- Type validation (or lack thereof) ---
 
 func TestParse_ArbitraryTypeAccepted(t *testing.T) {
-	input := "---\nid: TK-001\ntype: CompletelyMadeUpType\nstatus: draft\n---\n"
+	input := "---\nid: TK-001\ntype: CompletelyMadeUpType\nstatus: todo\n---\n"
 	item, err := Parse([]byte(input), "test.md")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -829,7 +829,7 @@ func TestParse_ArbitraryTypeAccepted(t *testing.T) {
 // --- Phase validation (or lack thereof) ---
 
 func TestParse_ArbitraryPhaseAccepted(t *testing.T) {
-	input := "---\nid: TK-001\nphase: \"not-a-number\"\nstatus: draft\n---\n"
+	input := "---\nid: TK-001\nphase: \"not-a-number\"\nstatus: todo\n---\n"
 	item, err := Parse([]byte(input), "test.md")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)

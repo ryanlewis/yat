@@ -1,7 +1,7 @@
 ---
 id: SHOULD-BE-IGNORED
 title: "This has an ID but yat:ignore should win"
-status: draft
+status: todo
 type: Task
 priority: High
 dependencies: []

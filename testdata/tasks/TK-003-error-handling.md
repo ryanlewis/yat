@@ -5,7 +5,7 @@ type: Task
 priority: High
 points: 3
 dependencies: [TK-001]
-status: draft
+status: todo
 phase: "1"
 ---
 

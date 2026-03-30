@@ -17,7 +17,7 @@ make clean       # remove binary, coverage files
 Run a single test:
 
 ```sh
-go test -v -race -run TestReady_AllDraft ./internal/graph/
+go test -v -race -run TestReady_AllTodo ./internal/graph/
 ```
 
 ## Architecture
@@ -31,7 +31,7 @@ internal/
     load.go          Recursive directory walk, bulk loading
     mutate.go        In-place status updates (rewrites frontmatter, preserves body)
   graph/             Dependency graph (Kahn's algorithm for topological layers)
-    graph.go         Build, Ready, Blocked, WaitingOn, UnblockedBy, cycle detection
+    graph.go         Build, Ready, ReadyAll, Blocked, WaitingOn, UnblockedBy, cycle detection
   config/            Project config file loading (.yat.yaml / .yat.local.yaml)
     config.go        Load with directory traversal, tilde expansion
   cmd/               One file per command, all implement Run(*RunContext) error

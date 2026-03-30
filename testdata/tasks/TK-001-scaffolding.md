@@ -5,7 +5,7 @@ type: Task
 priority: Critical
 points: 2
 dependencies: []
-status: draft
+status: todo
 phase: "1"
 ---
 

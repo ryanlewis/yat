@@ -16,7 +16,7 @@ type: Task
 priority: Critical
 points: 3
 dependencies: []
-status: draft
+status: todo
 phase: "1"
 ---
 
@@ -77,7 +77,7 @@ func TestSetStatusInvalid(t *testing.T) {
 	content := `---
 id: TK-001
 title: "Test"
-status: draft
+status: todo
 ---
 
 Body.
@@ -158,7 +158,7 @@ Body.
 func TestSetStatusWithOptions_CustomValidation(t *testing.T) {
 	content := `---
 id: TK-001
-status: draft
+status: todo
 ---
 `
 	dir := t.TempDir()
@@ -183,7 +183,7 @@ func TestSetStatusInBody(t *testing.T) {
 	content := `---
 id: TK-001
 title: "Test"
-status: draft
+status: todo
 ---
 
 ## Example YAML

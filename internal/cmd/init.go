@@ -51,7 +51,7 @@ id: EXAMPLE-001
 title: My first item
 type: Task
 priority: Medium
-status: draft
+status: todo
 ---
 
 Replace this with a description of the work to be done.

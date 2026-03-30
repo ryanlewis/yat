@@ -39,7 +39,7 @@ func SetStatusWithOptions(path string, newStatus Status, opts MutateOptions) err
 			return fmt.Errorf("invalid status %q", newStatus)
 		}
 	} else if newStatus == "" || !newStatus.Valid() {
-		return fmt.Errorf("invalid status %q: must be draft, in-progress, or done", newStatus)
+		return fmt.Errorf("invalid status %q: must be todo, in-progress, or done", newStatus)
 	}
 
 	data, err := os.ReadFile(path)

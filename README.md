@@ -46,7 +46,7 @@ id: TK-001
 ---
 ```
 
-Status defaults to `draft` when omitted. A more complete item might look like:
+Status defaults to `todo` when omitted. A more complete item might look like:
 
 ```markdown
 ---
@@ -56,7 +56,7 @@ type: Task
 priority: High
 points: 3
 dependencies: []
-status: draft
+status: todo
 phase: "1"
 ---
 
@@ -105,7 +105,7 @@ Still blocked (partial deps resolved):
 | `priority`     | `Critical`, `High`, `Medium`, or `Low`      |
 | `points`       | Effort estimate (integer)                   |
 | `dependencies` | List of IDs this item depends on            |
-| `status`       | `draft`, `in-progress`, or `done` (customizable, see below) |
+| `status`       | `todo`, `in-progress`, or `done` (customizable, see below) |
 | `phase`        | Grouping label for phased delivery          |
 
 ## Mixing items with other markdown
@@ -169,7 +169,7 @@ By default, yat recognizes these status values grouped into three categories:
 |-----------|-----------------------------------------|
 | `done`    | `done`, `complete`, `completed`, `closed` |
 | `active`  | `in-progress`, `active`, `started`      |
-| `initial` | `draft`, `todo`, `backlog`, `new`       |
+| `initial` | `todo`, `draft`, `backlog`, `new`       |
 
 Override them in `.yat.yaml` to fit your workflow:
 

@@ -16,7 +16,7 @@ type ParseOptions struct {
 	Aliases map[string]string
 	// ValidStatuses, when non-nil, replaces the built-in Status.Valid() check.
 	ValidStatuses StatusSet
-	// DefaultStatus is used when the status field is empty. Zero value means "draft".
+	// DefaultStatus is used when the status field is empty. Zero value means "todo".
 	DefaultStatus Status
 }
 
@@ -166,14 +166,14 @@ func validateStatus(item *Item, opts ParseOptions, path string) error {
 			return fmt.Errorf("invalid status %q in %s: must be one of %v", item.Status, path, valid)
 		}
 	} else if !item.Status.Valid() {
-		return fmt.Errorf("invalid status %q in %s: must be draft, in-progress, or done", item.Status, path)
+		return fmt.Errorf("invalid status %q in %s: must be todo, in-progress, or done", item.Status, path)
 	}
 
 	if item.Status == "" {
 		if opts.DefaultStatus != "" {
 			item.Status = opts.DefaultStatus
 		} else {
-			item.Status = StatusDraft
+			item.Status = StatusTodo
 		}
 	}
 
@@ -185,7 +185,7 @@ func looksLikeItem(item *Item) bool {
 }
 
 // hasDirective checks whether the frontmatter contains a specific yat directive.
-// The yat field is a comma-delimited list of directives (e.g. "yat: ignore" or "yat: ignore, draft").
+// The yat field is a comma-delimited list of directives (e.g. "yat: ignore" or "yat: ignore, notrack").
 func hasDirective(fm []byte, directive string) bool {
 	var meta struct {
 		Yat string `yaml:"yat"`

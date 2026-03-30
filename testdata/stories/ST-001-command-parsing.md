@@ -5,7 +5,7 @@ type: Story
 priority: Critical
 points: 5
 dependencies: [TK-001, TK-003]
-status: draft
+status: todo
 phase: "2"
 ---
 

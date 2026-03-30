@@ -5,7 +5,7 @@ yat: ignore
 
 ---
 id: GOTCHA-001
-status: draft
+status: todo
 priority: Critical
 ---
 

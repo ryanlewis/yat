@@ -7,19 +7,20 @@ func TestStatus_Valid(t *testing.T) {
 		status Status
 		valid  bool
 	}{
-		{StatusDraft, true},
+		{StatusTodo, true},
 		{StatusInProgress, true},
 		{StatusDone, true},
-		{"", true}, // empty is valid (normalized to draft)
-		{"Draft", false},
-		{"DRAFT", false},
+		{"", true}, // empty is valid (normalized to todo)
+		{"Todo", false},
+		{"TODO", false},
+		{"draft", false},
 		{"In-Progress", false},
 		{"in_progress", false},
 		{"Done", false},
 		{"DONE", false},
 		{"banana", false},
-		{"draft ", false},      // trailing space
-		{" draft", false},      // leading space
+		{"todo ", false},       // trailing space
+		{" todo", false},       // leading space
 		{"in progress", false}, // space instead of hyphen
 	}
 

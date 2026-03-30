@@ -11,7 +11,7 @@ No id, no item-like fields. Should be silently skipped.
 
 ```yaml
 id: FAKE-001
-status: draft
+status: todo
 dependencies: [TK-001]
 ```
 

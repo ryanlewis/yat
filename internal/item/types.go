@@ -5,16 +5,16 @@ package item
 type Status string
 
 const (
-	StatusDraft      Status = "draft"
+	StatusTodo       Status = "todo"
 	StatusInProgress Status = "in-progress"
 	StatusDone       Status = "done"
 )
 
 // Valid reports whether s is a recognized status value.
-// An empty status is treated as draft.
+// An empty status is treated as todo.
 func (s Status) Valid() bool {
 	switch s {
-	case StatusDraft, StatusInProgress, StatusDone, "":
+	case StatusTodo, StatusInProgress, StatusDone, "":
 		return true
 	default:
 		return false

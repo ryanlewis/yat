@@ -349,8 +349,8 @@ func TestDefaults_NoStatusesKey(t *testing.T) {
 	if len(cfg.Statuses.Active) != len(wantActive) || cfg.Statuses.Active[0] != "in-progress" {
 		t.Errorf("expected default Active = %v, got %v", wantActive, cfg.Statuses.Active)
 	}
-	wantInitial := []string{"draft", "todo", "backlog", "new"}
-	if len(cfg.Statuses.Initial) != len(wantInitial) || cfg.Statuses.Initial[0] != "draft" {
+	wantInitial := []string{"todo", "draft", "backlog", "new"}
+	if len(cfg.Statuses.Initial) != len(wantInitial) || cfg.Statuses.Initial[0] != "todo" {
 		t.Errorf("expected default Initial = %v, got %v", wantInitial, cfg.Statuses.Initial)
 	}
 }

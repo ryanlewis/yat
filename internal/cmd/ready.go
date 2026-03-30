@@ -1,20 +1,32 @@
 package cmd
 
-import "fmt"
+import (
+	"fmt"
 
-// ReadyCmd shows items where all dependencies are done and the item itself is not done.
-type ReadyCmd struct{}
+	"github.com/ryanlewis/yat/internal/item"
+)
+
+// ReadyCmd shows items where all dependencies are done and the item itself is not started.
+type ReadyCmd struct {
+	All bool `help:"Include in-progress items." short:"a"`
+}
 
 type readyJSON struct {
 	ID       string `json:"id"`
 	Priority string `json:"priority"`
 	Type     string `json:"type"`
+	Status   string `json:"status"`
 	Title    string `json:"title"`
 }
 
 // Run executes the ready command.
 func (r *ReadyCmd) Run(rc *RunContext) error {
-	items := rc.Graph.Ready()
+	var items []*item.Item
+	if r.All {
+		items = rc.Graph.ReadyAll()
+	} else {
+		items = rc.Graph.Ready()
+	}
 
 	if rc.JSON {
 		out := make([]readyJSON, len(items))
@@ -23,6 +35,7 @@ func (r *ReadyCmd) Run(rc *RunContext) error {
 				ID:       item.ID,
 				Priority: string(item.Priority),
 				Type:     item.Type,
+				Status:   string(item.Status),
 				Title:    item.Title,
 			}
 		}

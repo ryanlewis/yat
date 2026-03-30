@@ -201,7 +201,7 @@ func (c *Config) Defaults() {
 		c.Statuses = StatusGroups{
 			Done:    []string{"done", "complete", "completed", "closed"},
 			Active:  []string{"in-progress", "active", "started"},
-			Initial: []string{"draft", "todo", "backlog", "new"},
+			Initial: []string{"todo", "draft", "backlog", "new"},
 		}
 	}
 }

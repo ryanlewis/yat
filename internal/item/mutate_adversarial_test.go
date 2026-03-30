@@ -7,14 +7,14 @@ import (
 	"testing"
 )
 
-const testDraftFrontmatter = "---\nid: TK-001\nstatus: draft\n---\n"
+const testTodoFrontmatter = "---\nid: TK-001\nstatus: todo\n---\n"
 
 // --- SetStatus adversarial tests ---
 
 func TestSetStatus_EmptyStringStatus(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "test.md")
-	os.WriteFile(path, []byte(testDraftFrontmatter), 0o644)
+	os.WriteFile(path, []byte(testTodoFrontmatter), 0o644)
 
 	err := SetStatus(path, Status(""))
 	if err == nil {
@@ -46,7 +46,7 @@ func TestSetStatus_NoFrontmatter(t *testing.T) {
 func TestSetStatus_ReadOnlyFile(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "readonly.md")
-	os.WriteFile(path, []byte(testDraftFrontmatter), 0o644)
+	os.WriteFile(path, []byte(testTodoFrontmatter), 0o644)
 	os.Chmod(path, 0o444)
 	t.Cleanup(func() { os.Chmod(path, 0o644) })
 
@@ -60,7 +60,7 @@ func TestSetStatus_PreservesBody_WithStatusLikeContent(t *testing.T) {
 	content := `---
 id: TK-001
 title: "Test"
-status: draft
+status: todo
 ---
 
 ## Status update
@@ -94,7 +94,7 @@ The word status: appears many times.
 }
 
 func TestSetStatus_CRLFInput(t *testing.T) {
-	content := "---\r\nid: TK-001\r\ntitle: \"Test\"\r\nstatus: draft\r\n---\r\n\r\nBody.\r\n"
+	content := "---\r\nid: TK-001\r\ntitle: \"Test\"\r\nstatus: todo\r\n---\r\n\r\nBody.\r\n"
 	dir := t.TempDir()
 	path := filepath.Join(dir, "test.md")
 	os.WriteFile(path, []byte(content), 0o644)
@@ -116,7 +116,7 @@ func TestSetStatus_CRLFInput(t *testing.T) {
 
 func TestSetStatus_MultipleStatusFieldsInFrontmatter(t *testing.T) {
 	// Pathological: two status fields in frontmatter (YAML gives last, regex replaces all)
-	content := "---\nid: TK-001\nstatus: draft\nstatus: in-progress\n---\nBody.\n"
+	content := "---\nid: TK-001\nstatus: todo\nstatus: in-progress\n---\nBody.\n"
 	dir := t.TempDir()
 	path := filepath.Join(dir, "test.md")
 	os.WriteFile(path, []byte(content), 0o644)
@@ -128,7 +128,7 @@ func TestSetStatus_MultipleStatusFieldsInFrontmatter(t *testing.T) {
 	data, _ := os.ReadFile(path)
 	result := string(data)
 	// Both lines should be replaced
-	if strings.Contains(result, "status: draft") || strings.Contains(result, "status: in-progress") {
+	if strings.Contains(result, "status: todo") || strings.Contains(result, "status: in-progress") {
 		t.Errorf("not all status lines replaced, got:\n%s", result)
 	}
 }
@@ -168,7 +168,7 @@ func TestSetStatus_Idempotent(t *testing.T) {
 
 func TestSetStatus_LargeBody(t *testing.T) {
 	body := strings.Repeat("This is a very long line of text. ", 1000)
-	content := testDraftFrontmatter + body + "\n"
+	content := testTodoFrontmatter + body + "\n"
 	dir := t.TempDir()
 	path := filepath.Join(dir, "test.md")
 	os.WriteFile(path, []byte(content), 0o644)
@@ -188,7 +188,7 @@ func TestSetStatus_LargeBody(t *testing.T) {
 }
 
 func TestSetStatus_UnicodeBody(t *testing.T) {
-	content := "---\nid: TK-001\nstatus: draft\n---\n\n## 日本語テスト\n\n🚀 Emoji content 中文\n"
+	content := "---\nid: TK-001\nstatus: todo\n---\n\n## 日本語テスト\n\n🚀 Emoji content 中文\n"
 	dir := t.TempDir()
 	path := filepath.Join(dir, "test.md")
 	os.WriteFile(path, []byte(content), 0o644)
@@ -207,7 +207,7 @@ func TestSetStatus_UnicodeBody(t *testing.T) {
 func TestSetStatus_EmptyBody(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "test.md")
-	os.WriteFile(path, []byte(testDraftFrontmatter), 0o644)
+	os.WriteFile(path, []byte(testTodoFrontmatter), 0o644)
 
 	if err := SetStatus(path, StatusDone); err != nil {
 		t.Fatalf("SetStatus: %v", err)
@@ -229,12 +229,12 @@ func TestSetStatus_AllTransitions(t *testing.T) {
 		from Status
 		to   Status
 	}{
-		{StatusDraft, StatusInProgress},
+		{StatusTodo, StatusInProgress},
 		{StatusInProgress, StatusDone},
-		{StatusDone, StatusDraft},
-		{StatusDraft, StatusDone},
+		{StatusDone, StatusTodo},
+		{StatusTodo, StatusDone},
 		{StatusDone, StatusInProgress},
-		{StatusInProgress, StatusDraft},
+		{StatusInProgress, StatusTodo},
 	}
 
 	for _, tr := range transitions {

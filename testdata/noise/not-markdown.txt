@@ -1,4 +1,4 @@
 This is not a markdown file.
 id: SNEAKY-001
-status: draft
+status: todo
 Should be ignored because it's .txt, not .md.

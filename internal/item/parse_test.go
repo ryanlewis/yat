@@ -22,7 +22,7 @@ type: Task
 priority: Critical
 points: 3
 dependencies: [TK-002]
-status: draft
+status: todo
 phase: "1"
 ---
 
@@ -72,7 +72,7 @@ title: "Unclosed"
 		},
 		{
 			name:   "CRLF line endings",
-			input:  "---\r\nid: TK-001\r\ntitle: \"CRLF test\"\r\nstatus: draft\r\n---\r\n\r\nBody.\r\n",
+			input:  "---\r\nid: TK-001\r\ntitle: \"CRLF test\"\r\nstatus: todo\r\n---\r\n\r\nBody.\r\n",
 			wantID: "TK-001",
 		},
 		{
@@ -97,7 +97,7 @@ title: "Unclosed"
 		},
 		{
 			name:    "item-like frontmatter without id",
-			input:   "---\ntype: Task\nstatus: draft\n---\n\nBody.\n",
+			input:   "---\ntype: Task\nstatus: todo\n---\n\nBody.\n",
 			wantErr: true,
 		},
 	}
@@ -204,25 +204,25 @@ func TestParseWithOptions_DefaultStatusApplied(t *testing.T) {
 }
 
 func TestParseWithOptions_BackwardCompat(t *testing.T) {
-	input := "---\nid: TK-001\nstatus: draft\n---\n"
+	input := "---\nid: TK-001\nstatus: todo\n---\n"
 	item, err := ParseWithOptions([]byte(input), "test.md", ParseOptions{})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if item.Status != StatusDraft {
-		t.Errorf("Status = %q, want draft", item.Status)
+	if item.Status != StatusTodo {
+		t.Errorf("Status = %q, want todo", item.Status)
 	}
 }
 
-func TestParse_EmptyStatusNormalizedToDraft(t *testing.T) {
+func TestParse_EmptyStatusNormalizedToTodo(t *testing.T) {
 	input := "---\nid: TK-001\ntitle: \"No status\"\n---\n\nBody.\n"
 	item, err := Parse([]byte(input), "test.md")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if item.Status != StatusDraft {
-		t.Errorf("Status = %q, want %q", item.Status, StatusDraft)
+	if item.Status != StatusTodo {
+		t.Errorf("Status = %q, want %q", item.Status, StatusTodo)
 	}
 }
 
@@ -305,7 +305,7 @@ func TestExtractHeading(t *testing.T) {
 }
 
 func TestParse_TitleFromBody(t *testing.T) {
-	data := []byte("---\nid: TK-001\nstatus: draft\n---\n# My Title\n\nBody content.\n")
+	data := []byte("---\nid: TK-001\nstatus: todo\n---\n# My Title\n\nBody content.\n")
 	item, err := Parse(data, "test.md")
 	if err != nil {
 		t.Fatalf("Parse: %v", err)
@@ -316,7 +316,7 @@ func TestParse_TitleFromBody(t *testing.T) {
 }
 
 func TestParse_FrontmatterTitleTakesPrecedence(t *testing.T) {
-	data := []byte("---\nid: TK-001\ntitle: Explicit\nstatus: draft\n---\n# Body Title\n")
+	data := []byte("---\nid: TK-001\ntitle: Explicit\nstatus: todo\n---\n# Body Title\n")
 	item, err := Parse(data, "test.md")
 	if err != nil {
 		t.Fatalf("Parse: %v", err)

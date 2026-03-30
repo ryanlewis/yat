@@ -15,7 +15,7 @@ import (
 
 func TestShowCmd_NilDependencies_JSON(t *testing.T) {
 	items := []*item.Item{
-		{ID: "TK-001", Title: "No deps", Status: item.StatusDraft, Dependencies: nil},
+		{ID: "TK-001", Title: "No deps", Status: item.StatusTodo, Dependencies: nil},
 	}
 	rc, buf := newTestContext(t, items, true)
 
@@ -36,7 +36,7 @@ func TestShowCmd_NilDependencies_JSON(t *testing.T) {
 
 func TestShowCmd_SpecialCharsInTitle_JSON(t *testing.T) {
 	items := []*item.Item{
-		{ID: "TK-001", Title: `Title with "quotes" and <html> & stuff`, Status: item.StatusDraft},
+		{ID: "TK-001", Title: `Title with "quotes" and <html> & stuff`, Status: item.StatusTodo},
 	}
 	rc, buf := newTestContext(t, items, true)
 
@@ -57,7 +57,7 @@ func TestShowCmd_SpecialCharsInTitle_JSON(t *testing.T) {
 
 func TestShowCmd_UnicodeBody_JSON(t *testing.T) {
 	items := []*item.Item{
-		{ID: "TK-001", Title: "Unicode", Status: item.StatusDraft, Body: "日本語 🚀 中文\n"},
+		{ID: "TK-001", Title: "Unicode", Status: item.StatusTodo, Body: "日本語 🚀 中文\n"},
 	}
 	rc, buf := newTestContext(t, items, true)
 
@@ -77,7 +77,7 @@ func TestShowCmd_UnicodeBody_JSON(t *testing.T) {
 
 func TestShowCmd_NewlinesInBody_JSON(t *testing.T) {
 	items := []*item.Item{
-		{ID: "TK-001", Title: "Newlines", Status: item.StatusDraft, Body: "Line1\nLine2\nLine3\n"},
+		{ID: "TK-001", Title: "Newlines", Status: item.StatusTodo, Body: "Line1\nLine2\nLine3\n"},
 	}
 	rc, buf := newTestContext(t, items, true)
 
@@ -97,7 +97,7 @@ func TestShowCmd_NewlinesInBody_JSON(t *testing.T) {
 
 func TestShowCmd_EmptyFields_Text(t *testing.T) {
 	items := []*item.Item{
-		{ID: "TK-001", Title: "", Type: "", Priority: "", Status: item.StatusDraft, Phase: ""},
+		{ID: "TK-001", Title: "", Type: "", Priority: "", Status: item.StatusTodo, Phase: ""},
 	}
 	rc, buf := newTestContext(t, items, false)
 
@@ -115,7 +115,7 @@ func TestShowCmd_EmptyFields_Text(t *testing.T) {
 func TestShowCmd_LargeBody_Text(t *testing.T) {
 	largeBody := strings.Repeat("A very long line of text. ", 500)
 	items := []*item.Item{
-		{ID: "TK-001", Title: "Large", Status: item.StatusDraft, Body: largeBody},
+		{ID: "TK-001", Title: "Large", Status: item.StatusTodo, Body: largeBody},
 	}
 	rc, buf := newTestContext(t, items, false)
 
@@ -133,9 +133,9 @@ func TestShowCmd_LargeBody_Text(t *testing.T) {
 
 func TestReadyCmd_AllSamePriority(t *testing.T) {
 	items := []*item.Item{
-		{ID: "C", Priority: item.PriorityHigh, Status: item.StatusDraft},
-		{ID: "A", Priority: item.PriorityHigh, Status: item.StatusDraft},
-		{ID: "B", Priority: item.PriorityHigh, Status: item.StatusDraft},
+		{ID: "C", Priority: item.PriorityHigh, Status: item.StatusTodo},
+		{ID: "A", Priority: item.PriorityHigh, Status: item.StatusTodo},
+		{ID: "B", Priority: item.PriorityHigh, Status: item.StatusTodo},
 	}
 	rc, buf := newTestContext(t, items, true)
 
@@ -159,8 +159,8 @@ func TestReadyCmd_AllSamePriority(t *testing.T) {
 
 func TestReadyCmd_NoPriority(t *testing.T) {
 	items := []*item.Item{
-		{ID: "A", Priority: "", Status: item.StatusDraft},
-		{ID: "B", Priority: "", Status: item.StatusDraft},
+		{ID: "A", Priority: "", Status: item.StatusTodo},
+		{ID: "B", Priority: "", Status: item.StatusTodo},
 	}
 	rc, buf := newTestContext(t, items, true)
 
@@ -279,8 +279,8 @@ func TestStatusCmd_AllInProgress(t *testing.T) {
 
 func TestStatusCmd_CustomType(t *testing.T) {
 	items := []*item.Item{
-		{ID: "A", Status: item.StatusDraft, Type: "Bug"},
-		{ID: "B", Status: item.StatusDraft, Type: "Bug"},
+		{ID: "A", Status: item.StatusTodo, Type: "Bug"},
+		{ID: "B", Status: item.StatusTodo, Type: "Bug"},
 	}
 	rc, buf := newTestContext(t, items, false)
 
@@ -301,9 +301,9 @@ func TestStatusCmd_PhasesInText(t *testing.T) {
 	items := []*item.Item{
 		{ID: "A", Phase: "1", Status: item.StatusDone, Points: 3},
 		{ID: "B", Phase: "1", Status: item.StatusDone, Points: 2},
-		{ID: "C", Phase: "2", Status: item.StatusDraft, Points: 5},
+		{ID: "C", Phase: "2", Status: item.StatusTodo, Points: 5},
 		{ID: "D", Phase: "2", Status: item.StatusInProgress, Points: 8},
-		{ID: "E", Phase: "3", Status: item.StatusDraft, Points: 1},
+		{ID: "E", Phase: "3", Status: item.StatusTodo, Points: 1},
 	}
 	rc, buf := newTestContext(t, items, false)
 
@@ -328,7 +328,7 @@ func TestStatusCmd_PhasesInText(t *testing.T) {
 func TestStatusCmd_PhasesInJSON(t *testing.T) {
 	items := []*item.Item{
 		{ID: "A", Phase: "1", Status: item.StatusDone, Points: 3},
-		{ID: "B", Phase: "2", Status: item.StatusDraft, Points: 5},
+		{ID: "B", Phase: "2", Status: item.StatusTodo, Points: 5},
 		{ID: "C", Phase: "2", Status: item.StatusInProgress, Points: 8},
 	}
 	rc, buf := newTestContext(t, items, true)
@@ -358,7 +358,7 @@ func TestStatusCmd_PhasesInJSON(t *testing.T) {
 
 func TestStatusCmd_NoPhasesHidesSection(t *testing.T) {
 	items := []*item.Item{
-		{ID: "A", Status: item.StatusDraft},
+		{ID: "A", Status: item.StatusTodo},
 		{ID: "B", Status: item.StatusDone},
 	}
 	rc, buf := newTestContext(t, items, false)
@@ -376,7 +376,7 @@ func TestStatusCmd_NoPhasesHidesSection(t *testing.T) {
 
 func TestStatusCmd_NoPhasesJSON(t *testing.T) {
 	items := []*item.Item{
-		{ID: "A", Status: item.StatusDraft},
+		{ID: "A", Status: item.StatusTodo},
 	}
 	rc, buf := newTestContext(t, items, true)
 
@@ -401,7 +401,7 @@ func TestStatusCmd_NoPhasesJSON(t *testing.T) {
 
 func TestBlockedCmd_EmptyJSON(t *testing.T) {
 	items := []*item.Item{
-		{ID: "A", Status: item.StatusDraft},
+		{ID: "A", Status: item.StatusTodo},
 	}
 	rc, buf := newTestContext(t, items, true)
 
@@ -423,7 +423,7 @@ func TestBlockedCmd_EmptyJSON(t *testing.T) {
 
 func TestGraphCmd_SingleItem(t *testing.T) {
 	items := []*item.Item{
-		{ID: "A", Status: item.StatusDraft},
+		{ID: "A", Status: item.StatusTodo},
 	}
 	rc, buf := newTestContext(t, items, true)
 
@@ -450,7 +450,7 @@ func TestGraphCmd_DeepChain(t *testing.T) {
 	for i := range depth {
 		it := &item.Item{
 			ID:     string(rune('A' + i)),
-			Status: item.StatusDraft,
+			Status: item.StatusTodo,
 		}
 		if i > 0 {
 			it.Dependencies = []string{string(rune('A' + i - 1))}
@@ -487,10 +487,10 @@ func TestGraphCmd_DeepChain(t *testing.T) {
 
 func TestCompleteCmd_NoUnblocked(t *testing.T) {
 	dir := t.TempDir()
-	path := writeItemFile(t, dir, "a.md", "---\nid: A\ntitle: \"Solo\"\nstatus: draft\n---\n")
+	path := writeItemFile(t, dir, "a.md", "---\nid: A\ntitle: \"Solo\"\nstatus: todo\n---\n")
 
 	items := []*item.Item{
-		{ID: "A", Title: "Solo", Status: item.StatusDraft, FilePath: path},
+		{ID: "A", Title: "Solo", Status: item.StatusTodo, FilePath: path},
 	}
 	rc, buf := newTestContext(t, items, false)
 
@@ -537,10 +537,10 @@ func TestCompleteCmd_InProgressItem(t *testing.T) {
 
 func TestCompleteCmd_JSON_NoUnblocked(t *testing.T) {
 	dir := t.TempDir()
-	path := writeItemFile(t, dir, "a.md", "---\nid: A\ntitle: \"Solo\"\nstatus: draft\n---\n")
+	path := writeItemFile(t, dir, "a.md", "---\nid: A\ntitle: \"Solo\"\nstatus: todo\n---\n")
 
 	items := []*item.Item{
-		{ID: "A", Title: "Solo", Status: item.StatusDraft, FilePath: path},
+		{ID: "A", Title: "Solo", Status: item.StatusTodo, FilePath: path},
 	}
 	rc, buf := newTestContext(t, items, true)
 
@@ -565,10 +565,10 @@ func TestCompleteCmd_JSON_NoUnblocked(t *testing.T) {
 
 func TestStartCmd_ReadyItem_JSON(t *testing.T) {
 	dir := t.TempDir()
-	path := writeItemFile(t, dir, "a.md", "---\nid: A\ntitle: \"Ready\"\nstatus: draft\n---\nBody text.\n")
+	path := writeItemFile(t, dir, "a.md", "---\nid: A\ntitle: \"Ready\"\nstatus: todo\n---\nBody text.\n")
 
 	items := []*item.Item{
-		{ID: "A", Title: "Ready", Status: item.StatusDraft, FilePath: path, Body: "Body text.\n"},
+		{ID: "A", Title: "Ready", Status: item.StatusTodo, FilePath: path, Body: "Body text.\n"},
 	}
 	rc, buf := newTestContext(t, items, true)
 
@@ -603,7 +603,7 @@ func TestNewRunContext_InvalidStatus(t *testing.T) {
 
 func TestNewRunContext_UnknownDependency(t *testing.T) {
 	dir := t.TempDir()
-	writeItemFile(t, dir, "a.md", "---\nid: A\nstatus: draft\ndependencies: [GHOST]\n---\n")
+	writeItemFile(t, dir, "a.md", "---\nid: A\nstatus: todo\ndependencies: [GHOST]\n---\n")
 
 	_, err := NewRunContext(dir, false, defaultConfig())
 	if err == nil {
@@ -616,7 +616,7 @@ func TestNewRunContext_UnknownDependency(t *testing.T) {
 
 func TestNewRunContext_MixedValid(t *testing.T) {
 	dir := t.TempDir()
-	writeItemFile(t, dir, "a.md", "---\nid: A\nstatus: draft\n---\n")
+	writeItemFile(t, dir, "a.md", "---\nid: A\nstatus: todo\n---\n")
 	writeItemFile(t, dir, "b.md", "---\nid: B\nstatus: in-progress\ndependencies: [A]\n---\n")
 	writeItemFile(t, dir, "c.md", "---\nid: C\nstatus: done\ndependencies: [A]\n---\n")
 	// Non-item markdown
@@ -636,8 +636,8 @@ func TestNewRunContext_SubdirWithMixedContent(t *testing.T) {
 	sub := filepath.Join(dir, "phase1")
 	os.MkdirAll(sub, 0o755)
 
-	writeItemFile(t, dir, "root.md", "---\nid: ROOT\nstatus: draft\n---\n")
-	writeItemFile(t, sub, "child.md", "---\nid: CHILD\nstatus: draft\ndependencies: [ROOT]\n---\n")
+	writeItemFile(t, dir, "root.md", "---\nid: ROOT\nstatus: todo\n---\n")
+	writeItemFile(t, sub, "child.md", "---\nid: CHILD\nstatus: todo\ndependencies: [ROOT]\n---\n")
 	writeItemFile(t, sub, "notes.txt", "Not a markdown file")
 
 	rc, err := NewRunContext(dir, false, defaultConfig())

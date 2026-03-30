@@ -26,7 +26,7 @@ func TestBuild_SelfLoop(t *testing.T) {
 
 func TestBuild_SingleItem(t *testing.T) {
 	items := []*item.Item{
-		{ID: "A", Status: item.StatusDraft},
+		{ID: "A", Status: item.StatusTodo},
 	}
 	g, err := Build(items)
 	if err != nil {
@@ -121,7 +121,7 @@ func TestBuild_LongLinearChain(t *testing.T) {
 	for i := range chainLen {
 		it := &item.Item{
 			ID:     string(rune('A'+i%26)) + string(rune('0'+i/26)),
-			Status: item.StatusDraft,
+			Status: item.StatusTodo,
 		}
 		if i > 0 {
 			it.Dependencies = []string{items[i-1].ID}
@@ -154,7 +154,7 @@ func TestBuild_WideGraph(t *testing.T) {
 	for i := range width {
 		items[i] = &item.Item{
 			ID:     "ITEM-" + string(rune('A'+i%26)) + string(rune('0'+i/26)),
-			Status: item.StatusDraft,
+			Status: item.StatusTodo,
 		}
 	}
 
@@ -188,10 +188,10 @@ func TestBuild_DiamondDependency(t *testing.T) {
 	//   \ /
 	//    D
 	items := []*item.Item{
-		{ID: "A", Status: item.StatusDraft},
-		{ID: "B", Status: item.StatusDraft, Dependencies: []string{"A"}},
-		{ID: "C", Status: item.StatusDraft, Dependencies: []string{"A"}},
-		{ID: "D", Status: item.StatusDraft, Dependencies: []string{"B", "C"}},
+		{ID: "A", Status: item.StatusTodo},
+		{ID: "B", Status: item.StatusTodo, Dependencies: []string{"A"}},
+		{ID: "C", Status: item.StatusTodo, Dependencies: []string{"A"}},
+		{ID: "D", Status: item.StatusTodo, Dependencies: []string{"B", "C"}},
 	}
 
 	g := mustBuild(t, items)
@@ -303,7 +303,7 @@ func TestBuild_CycleDetectedRegardlessOfStatus(t *testing.T) {
 
 func TestWaitingOn_NoDeps(t *testing.T) {
 	g := mustBuild(t, []*item.Item{
-		{ID: "A", Status: item.StatusDraft},
+		{ID: "A", Status: item.StatusTodo},
 	})
 	waiting := g.WaitingOn("A")
 	if len(waiting) != 0 {
@@ -314,7 +314,7 @@ func TestWaitingOn_NoDeps(t *testing.T) {
 func TestWaitingOn_AllDepsDone(t *testing.T) {
 	items := []*item.Item{
 		{ID: "A", Status: item.StatusDone},
-		{ID: "B", Status: item.StatusDraft, Dependencies: []string{"A"}},
+		{ID: "B", Status: item.StatusTodo, Dependencies: []string{"A"}},
 	}
 	g := mustBuild(t, items)
 	waiting := g.WaitingOn("B")
@@ -325,7 +325,7 @@ func TestWaitingOn_AllDepsDone(t *testing.T) {
 
 func TestWaitingOn_UnknownItem(t *testing.T) {
 	g := mustBuild(t, []*item.Item{
-		{ID: "A", Status: item.StatusDraft},
+		{ID: "A", Status: item.StatusTodo},
 	})
 	waiting := g.WaitingOn("NONEXISTENT")
 	if len(waiting) != 0 {
@@ -337,7 +337,7 @@ func TestWaitingOn_UnknownItem(t *testing.T) {
 
 func TestDependentsOf_NoDependents(t *testing.T) {
 	g := mustBuild(t, []*item.Item{
-		{ID: "A", Status: item.StatusDraft},
+		{ID: "A", Status: item.StatusTodo},
 	})
 	deps := g.DependentsOf("A")
 	if deps != nil {
@@ -347,7 +347,7 @@ func TestDependentsOf_NoDependents(t *testing.T) {
 
 func TestDependentsOf_UnknownItem(t *testing.T) {
 	g := mustBuild(t, []*item.Item{
-		{ID: "A", Status: item.StatusDraft},
+		{ID: "A", Status: item.StatusTodo},
 	})
 	deps := g.DependentsOf("NONEXISTENT")
 	if deps != nil {
@@ -357,8 +357,8 @@ func TestDependentsOf_UnknownItem(t *testing.T) {
 
 func TestDependentsOf_ReturnsCopy(t *testing.T) {
 	items := []*item.Item{
-		{ID: "A", Status: item.StatusDraft},
-		{ID: "B", Status: item.StatusDraft, Dependencies: []string{"A"}},
+		{ID: "A", Status: item.StatusTodo},
+		{ID: "B", Status: item.StatusTodo, Dependencies: []string{"A"}},
 	}
 	g := mustBuild(t, items)
 
@@ -378,8 +378,8 @@ func TestDependentsOf_ReturnsCopy(t *testing.T) {
 
 func TestEdges_NoEdges(t *testing.T) {
 	g := mustBuild(t, []*item.Item{
-		{ID: "A", Status: item.StatusDraft},
-		{ID: "B", Status: item.StatusDraft},
+		{ID: "A", Status: item.StatusTodo},
+		{ID: "B", Status: item.StatusTodo},
 	})
 	edges := g.Edges()
 	if len(edges) != 0 {
@@ -389,9 +389,9 @@ func TestEdges_NoEdges(t *testing.T) {
 
 func TestEdges_Sorted(t *testing.T) {
 	items := []*item.Item{
-		{ID: "Z", Status: item.StatusDraft},
-		{ID: "A", Status: item.StatusDraft, Dependencies: []string{"Z"}},
-		{ID: "M", Status: item.StatusDraft, Dependencies: []string{"Z"}},
+		{ID: "Z", Status: item.StatusTodo},
+		{ID: "A", Status: item.StatusTodo, Dependencies: []string{"Z"}},
+		{ID: "M", Status: item.StatusTodo, Dependencies: []string{"Z"}},
 	}
 	g := mustBuild(t, items)
 	edges := g.Edges()
@@ -410,10 +410,10 @@ func TestEdges_Sorted(t *testing.T) {
 
 func TestReady_SortingWithMixedPriorities(t *testing.T) {
 	items := []*item.Item{
-		{ID: "D", Priority: item.PriorityLow, Status: item.StatusDraft},
-		{ID: "C", Priority: item.PriorityMedium, Status: item.StatusDraft},
-		{ID: "B", Priority: item.PriorityHigh, Status: item.StatusDraft},
-		{ID: "A", Priority: item.PriorityCritical, Status: item.StatusDraft},
+		{ID: "D", Priority: item.PriorityLow, Status: item.StatusTodo},
+		{ID: "C", Priority: item.PriorityMedium, Status: item.StatusTodo},
+		{ID: "B", Priority: item.PriorityHigh, Status: item.StatusTodo},
+		{ID: "A", Priority: item.PriorityCritical, Status: item.StatusTodo},
 	}
 	g := mustBuild(t, items)
 	ready := g.Ready()
@@ -431,9 +431,9 @@ func TestReady_SortingWithMixedPriorities(t *testing.T) {
 
 func TestReady_SortingWithEmptyPriority(t *testing.T) {
 	items := []*item.Item{
-		{ID: "A", Priority: "", Status: item.StatusDraft},
-		{ID: "B", Priority: item.PriorityCritical, Status: item.StatusDraft},
-		{ID: "C", Priority: "", Status: item.StatusDraft},
+		{ID: "A", Priority: "", Status: item.StatusTodo},
+		{ID: "B", Priority: item.PriorityCritical, Status: item.StatusTodo},
+		{ID: "C", Priority: "", Status: item.StatusTodo},
 	}
 	g := mustBuild(t, items)
 	ready := g.Ready()
@@ -455,9 +455,9 @@ func TestReady_SortingWithEmptyPriority(t *testing.T) {
 
 func TestReady_SortingStabilityWithSamePriority(t *testing.T) {
 	items := []*item.Item{
-		{ID: "Z", Priority: item.PriorityHigh, Status: item.StatusDraft},
-		{ID: "A", Priority: item.PriorityHigh, Status: item.StatusDraft},
-		{ID: "M", Priority: item.PriorityHigh, Status: item.StatusDraft},
+		{ID: "Z", Priority: item.PriorityHigh, Status: item.StatusTodo},
+		{ID: "A", Priority: item.PriorityHigh, Status: item.StatusTodo},
+		{ID: "M", Priority: item.PriorityHigh, Status: item.StatusTodo},
 	}
 	g := mustBuild(t, items)
 
@@ -478,7 +478,7 @@ func TestReady_SortingStabilityWithSamePriority(t *testing.T) {
 
 func TestUnblockedBy_SkipsDoneDependents(t *testing.T) {
 	items := []*item.Item{
-		{ID: "A", Status: item.StatusDraft},
+		{ID: "A", Status: item.StatusTodo},
 		{ID: "B", Status: item.StatusDone, Dependencies: []string{"A"}},
 	}
 	g := mustBuild(t, items)
@@ -494,7 +494,7 @@ func TestUnblockedBy_SkipsDoneDependents(t *testing.T) {
 // --- Item lookup ---
 
 func TestItem_Found(t *testing.T) {
-	items := []*item.Item{{ID: "A", Status: item.StatusDraft}}
+	items := []*item.Item{{ID: "A", Status: item.StatusTodo}}
 	g := mustBuild(t, items)
 	it, ok := g.Item("A")
 	if !ok || it.ID != "A" {
@@ -503,7 +503,7 @@ func TestItem_Found(t *testing.T) {
 }
 
 func TestItem_NotFound(t *testing.T) {
-	g := mustBuild(t, []*item.Item{{ID: "A", Status: item.StatusDraft}})
+	g := mustBuild(t, []*item.Item{{ID: "A", Status: item.StatusTodo}})
 	_, ok := g.Item("NONEXISTENT")
 	if ok {
 		t.Error("Item(NONEXISTENT) should not be found")
@@ -514,8 +514,8 @@ func TestItem_NotFound(t *testing.T) {
 
 func TestBuild_DuplicateDependencies(t *testing.T) {
 	items := []*item.Item{
-		{ID: "A", Status: item.StatusDraft},
-		{ID: "B", Status: item.StatusDraft, Dependencies: []string{"A", "A", "A"}},
+		{ID: "A", Status: item.StatusTodo},
+		{ID: "B", Status: item.StatusTodo, Dependencies: []string{"A", "A", "A"}},
 	}
 	// Should build without error — duplicates are legal (if odd)
 	g, err := Build(items)
@@ -574,11 +574,11 @@ func TestUnblockedBy_ComplexFanOut(t *testing.T) {
 	// B also depends on E (not done)
 	// C and D depend only on A
 	items := []*item.Item{
-		{ID: "A", Status: item.StatusDraft},
-		{ID: "B", Status: item.StatusDraft, Dependencies: []string{"A", "E"}},
-		{ID: "C", Status: item.StatusDraft, Dependencies: []string{"A"}},
-		{ID: "D", Status: item.StatusDraft, Dependencies: []string{"A"}},
-		{ID: "E", Status: item.StatusDraft},
+		{ID: "A", Status: item.StatusTodo},
+		{ID: "B", Status: item.StatusTodo, Dependencies: []string{"A", "E"}},
+		{ID: "C", Status: item.StatusTodo, Dependencies: []string{"A"}},
+		{ID: "D", Status: item.StatusTodo, Dependencies: []string{"A"}},
+		{ID: "E", Status: item.StatusTodo},
 	}
 	g := mustBuild(t, items)
 
@@ -595,7 +595,7 @@ func TestUnblockedBy_ComplexFanOut(t *testing.T) {
 		t.Errorf("unblocked = %v, want [C, D]", ids)
 	}
 
-	// B should still be blocked (also depends on E which is draft)
+	// B should still be blocked (also depends on E which is todo)
 	if len(stillBlocked) != 1 || stillBlocked[0].ID != "B" {
 		t.Errorf("stillBlocked should be [B], got %d items", len(stillBlocked))
 	}

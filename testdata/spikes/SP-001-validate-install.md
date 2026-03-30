@@ -5,7 +5,7 @@ type: Spike
 priority: Critical
 points: 3
 dependencies: []
-status: draft
+status: todo
 phase: "0"
 ---
 

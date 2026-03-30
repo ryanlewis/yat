@@ -55,8 +55,11 @@ func NewRunContext(dir string, jsonOutput bool, cfg *config.Config) (*RunContext
 	isDone := func(s item.Status) bool {
 		return cfg.Statuses.IsDone(string(s))
 	}
+	isActive := func(s item.Status) bool {
+		return cfg.Statuses.IsActive(string(s))
+	}
 
-	buildOpts := []graphpkg.BuildOption{graphpkg.WithIsDone(isDone)}
+	buildOpts := []graphpkg.BuildOption{graphpkg.WithIsDone(isDone), graphpkg.WithIsActive(isActive)}
 	if len(cfg.Phases) > 0 {
 		buildOpts = append(buildOpts, graphpkg.WithPhaseOrder(cfg.Phases))
 	}

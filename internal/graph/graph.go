@@ -15,7 +15,8 @@ type Graph struct {
 	forward    map[string][]string // item -> its dependencies
 	reverse    map[string][]string // item -> items that depend on it
 	isDone     func(item.Status) bool
-	phaseOrder []string // explicit phase ordering from config; nil = lexicographic
+	isActive   func(item.Status) bool // optional; when set, Ready excludes active items
+	phaseOrder []string               // explicit phase ordering from config; nil = lexicographic
 }
 
 // Edge represents a dependency relationship.
@@ -73,6 +74,16 @@ func WithIsDone(fn func(item.Status) bool) BuildOption {
 	return func(g *Graph) {
 		if fn != nil {
 			g.isDone = fn
+		}
+	}
+}
+
+// WithIsActive sets a function to determine if an item's status means "active/in-progress".
+// When set, Ready excludes active items so it only returns items not yet started.
+func WithIsActive(fn func(item.Status) bool) BuildOption {
+	return func(g *Graph) {
+		if fn != nil {
+			g.isActive = fn
 		}
 	}
 }
@@ -154,10 +165,22 @@ func (g *Graph) detectCycles() error {
 	return fmt.Errorf("dependency cycle detected involving: %s", strings.Join(cyclic, ", "))
 }
 
-// Ready returns items where status != done and all dependencies have status == done.
-// Results are sorted by: phase match, priority, critical path depth (descending),
-// unblock impact (descending), then ID.
+// Ready returns items not yet started whose dependencies are all done.
+// When isActive is configured via WithIsActive, active (in-progress) items are
+// excluded so that only initial/todo items appear. Without WithIsActive, Ready
+// behaves like ReadyAll. Results are sorted by: phase match, priority, critical
+// path depth (descending), unblock impact (descending), then ID.
 func (g *Graph) Ready() []*item.Item {
+	return g.readyItems(false)
+}
+
+// ReadyAll returns all non-done items whose dependencies are all done,
+// including items that are already in progress.
+func (g *Graph) ReadyAll() []*item.Item {
+	return g.readyItems(true)
+}
+
+func (g *Graph) readyItems(includeActive bool) []*item.Item {
 	var ready []*item.Item
 
 	for _, i := range g.items {
@@ -165,9 +188,17 @@ func (g *Graph) Ready() []*item.Item {
 			continue
 		}
 
+		if !includeActive && g.isActive != nil && g.isActive(i.Status) {
+			continue
+		}
+
 		if g.AllDepsDone(i.ID) {
 			ready = append(ready, i)
 		}
+	}
+
+	if len(ready) <= 1 {
+		return ready
 	}
 
 	activePhase := g.ActivePhase()

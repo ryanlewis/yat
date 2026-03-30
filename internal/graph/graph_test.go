@@ -8,12 +8,12 @@ import (
 
 func makeItems() []*item.Item {
 	return []*item.Item{
-		{ID: "SP-001", Title: "Spike", Type: "Spike", Priority: item.PriorityCritical, Status: item.StatusDraft, Dependencies: nil},
-		{ID: "TK-001", Title: "Scaffolding", Type: "Task", Priority: item.PriorityCritical, Status: item.StatusDraft, Dependencies: nil},
-		{ID: "TK-002", Title: "Abstraction", Type: "Task", Priority: item.PriorityHigh, Status: item.StatusDraft, Dependencies: []string{"TK-001", "SP-001"}},
-		{ID: "TK-003", Title: "Error handling", Type: "Task", Priority: item.PriorityHigh, Status: item.StatusDraft, Dependencies: []string{"TK-001"}},
-		{ID: "ST-001", Title: "Command parsing", Type: "Story", Priority: item.PriorityCritical, Status: item.StatusDraft, Dependencies: []string{"TK-001", "TK-003"}},
-		{ID: "ST-002", Title: "Profile parsing", Type: "Story", Priority: item.PriorityHigh, Status: item.StatusDraft, Dependencies: []string{"TK-003", "TK-002"}},
+		{ID: "SP-001", Title: "Spike", Type: "Spike", Priority: item.PriorityCritical, Status: item.StatusTodo, Dependencies: nil},
+		{ID: "TK-001", Title: "Scaffolding", Type: "Task", Priority: item.PriorityCritical, Status: item.StatusTodo, Dependencies: nil},
+		{ID: "TK-002", Title: "Abstraction", Type: "Task", Priority: item.PriorityHigh, Status: item.StatusTodo, Dependencies: []string{"TK-001", "SP-001"}},
+		{ID: "TK-003", Title: "Error handling", Type: "Task", Priority: item.PriorityHigh, Status: item.StatusTodo, Dependencies: []string{"TK-001"}},
+		{ID: "ST-001", Title: "Command parsing", Type: "Story", Priority: item.PriorityCritical, Status: item.StatusTodo, Dependencies: []string{"TK-001", "TK-003"}},
+		{ID: "ST-002", Title: "Profile parsing", Type: "Story", Priority: item.PriorityHigh, Status: item.StatusTodo, Dependencies: []string{"TK-003", "TK-002"}},
 	}
 }
 
@@ -28,7 +28,7 @@ func mustBuild(t *testing.T, items []*item.Item) *Graph {
 	return g
 }
 
-func TestReady_AllDraft(t *testing.T) {
+func TestReady_AllTodo(t *testing.T) {
 	g := mustBuild(t, makeItems())
 	ready := g.Ready()
 
@@ -55,7 +55,7 @@ func TestReady_AfterComplete(t *testing.T) {
 
 	ready := g.Ready()
 
-	// SP-001 (no deps, draft), TK-003 (dep TK-001 done)
+	// SP-001 (no deps, todo), TK-003 (dep TK-001 done)
 	ids := make([]string, len(ready))
 	for i, r := range ready {
 		ids[i] = r.ID
@@ -130,8 +130,8 @@ func TestStillBlocked(t *testing.T) {
 
 	stillBlocked := g.StillBlocked("TK-001")
 
-	// TK-002 depends on TK-001 (done) and SP-001 (still draft) -> still blocked
-	// ST-001 depends on TK-001 (done) and TK-003 (draft) -> still blocked
+	// TK-002 depends on TK-001 (done) and SP-001 (still todo) -> still blocked
+	// ST-001 depends on TK-001 (done) and TK-003 (todo) -> still blocked
 	if len(stillBlocked) != 2 {
 		ids := make([]string, len(stillBlocked))
 		for i, b := range stillBlocked {
@@ -210,8 +210,8 @@ func TestReady_CustomIsDone(t *testing.T) {
 	isDone := func(s item.Status) bool { return s == "done" || s == "shipped" }
 	items := []*item.Item{
 		{ID: "A", Status: "shipped", Dependencies: nil},
-		{ID: "B", Status: "draft", Dependencies: []string{"A"}},
-		{ID: "C", Status: "draft", Dependencies: []string{"B"}},
+		{ID: "B", Status: "todo", Dependencies: []string{"A"}},
+		{ID: "C", Status: "todo", Dependencies: []string{"B"}},
 	}
 
 	g, err := Build(items, WithIsDone(isDone))
@@ -232,7 +232,7 @@ func TestReady_CustomIsDone(t *testing.T) {
 func TestWithIsDone_NilPreservesDefault(t *testing.T) {
 	items := []*item.Item{
 		{ID: "A", Status: item.StatusDone},
-		{ID: "B", Status: item.StatusDraft, Dependencies: []string{"A"}},
+		{ID: "B", Status: item.StatusTodo, Dependencies: []string{"A"}},
 	}
 
 	// Should not panic; nil isDone is ignored, default checks for StatusDone.
@@ -251,12 +251,47 @@ func TestWithIsDone_NilPreservesDefault(t *testing.T) {
 	}
 }
 
+func TestReadyAll_IncludesActive(t *testing.T) {
+	isDone := func(s item.Status) bool { return s == item.StatusDone }
+	isActive := func(s item.Status) bool { return s == item.StatusInProgress }
+	items := []*item.Item{
+		{ID: "A", Status: item.StatusDone},
+		{ID: "B", Status: item.StatusInProgress, Dependencies: []string{"A"}},
+		{ID: "C", Status: item.StatusTodo, Dependencies: []string{"A"}},
+	}
+
+	g, err := Build(items, WithIsDone(isDone), WithIsActive(isActive))
+	if err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+
+	// Ready excludes in-progress items
+	ready := g.Ready()
+	if len(ready) != 1 || ready[0].ID != "C" {
+		ids := make([]string, len(ready))
+		for i, r := range ready {
+			ids[i] = r.ID
+		}
+		t.Errorf("Ready() = %v, want [C]", ids)
+	}
+
+	// ReadyAll includes in-progress items
+	all := g.ReadyAll()
+	if len(all) != 2 {
+		ids := make([]string, len(all))
+		for i, r := range all {
+			ids[i] = r.ID
+		}
+		t.Fatalf("ReadyAll() = %v, want [B, C]", ids)
+	}
+}
+
 func TestBlocked_CustomIsDone(t *testing.T) {
 	isDone := func(s item.Status) bool { return s == "done" || s == "shipped" }
 	items := []*item.Item{
 		{ID: "A", Status: "shipped", Dependencies: nil},
-		{ID: "B", Status: "draft", Dependencies: []string{"A"}},
-		{ID: "C", Status: "draft", Dependencies: []string{"B"}},
+		{ID: "B", Status: "todo", Dependencies: []string{"A"}},
+		{ID: "C", Status: "todo", Dependencies: []string{"B"}},
 	}
 
 	g, err := Build(items, WithIsDone(isDone))
@@ -297,8 +332,8 @@ func TestWaitingOn_CustomIsDone(t *testing.T) {
 
 func TestActivePhase_NoPhases(t *testing.T) {
 	g := mustBuild(t, []*item.Item{
-		{ID: "A", Status: item.StatusDraft},
-		{ID: "B", Status: item.StatusDraft},
+		{ID: "A", Status: item.StatusTodo},
+		{ID: "B", Status: item.StatusTodo},
 	})
 	if got := g.ActivePhase(); got != "" {
 		t.Errorf("ActivePhase() = %q, want empty", got)
@@ -309,8 +344,8 @@ func TestActivePhase_EarliestIncomplete(t *testing.T) {
 	g := mustBuild(t, []*item.Item{
 		{ID: "A", Phase: "1", Status: item.StatusDone},
 		{ID: "B", Phase: "1", Status: item.StatusDone},
-		{ID: "C", Phase: "2", Status: item.StatusDraft},
-		{ID: "D", Phase: "3", Status: item.StatusDraft},
+		{ID: "C", Phase: "2", Status: item.StatusTodo},
+		{ID: "D", Phase: "3", Status: item.StatusTodo},
 	})
 	if got := g.ActivePhase(); got != "2" {
 		t.Errorf("ActivePhase() = %q, want 2", got)
@@ -321,7 +356,7 @@ func TestActivePhase_FirstPhaseStillActive(t *testing.T) {
 	g := mustBuild(t, []*item.Item{
 		{ID: "A", Phase: "1", Status: item.StatusDone},
 		{ID: "B", Phase: "1", Status: item.StatusInProgress},
-		{ID: "C", Phase: "2", Status: item.StatusDraft},
+		{ID: "C", Phase: "2", Status: item.StatusTodo},
 	})
 	if got := g.ActivePhase(); got != "1" {
 		t.Errorf("ActivePhase() = %q, want 1", got)
@@ -343,9 +378,9 @@ func TestActivePhase_AllDone(t *testing.T) {
 func TestActivePhase_ExplicitOrder(t *testing.T) {
 	// "Pre-1" sorts after "1" lexicographically, but config says it comes first.
 	g, err := Build([]*item.Item{
-		{ID: "A", Phase: "Pre-1", Status: item.StatusDraft},
-		{ID: "B", Phase: "1", Status: item.StatusDraft},
-		{ID: "C", Phase: "2", Status: item.StatusDraft},
+		{ID: "A", Phase: "Pre-1", Status: item.StatusTodo},
+		{ID: "B", Phase: "1", Status: item.StatusTodo},
+		{ID: "C", Phase: "2", Status: item.StatusTodo},
 	}, WithPhaseOrder([]string{"Pre-1", "1", "2"}))
 	if err != nil {
 		t.Fatalf("Build: %v", err)
@@ -358,8 +393,8 @@ func TestActivePhase_ExplicitOrder(t *testing.T) {
 func TestActivePhase_ExplicitOrderSkipsDone(t *testing.T) {
 	g, err := Build([]*item.Item{
 		{ID: "A", Phase: "Pre-1", Status: item.StatusDone},
-		{ID: "B", Phase: "1", Status: item.StatusDraft},
-		{ID: "C", Phase: "2", Status: item.StatusDraft},
+		{ID: "B", Phase: "1", Status: item.StatusTodo},
+		{ID: "C", Phase: "2", Status: item.StatusTodo},
 	}, WithPhaseOrder([]string{"Pre-1", "1", "2"}))
 	if err != nil {
 		t.Fatalf("Build: %v", err)
@@ -373,7 +408,7 @@ func TestActivePhase_ExplicitOrderUnlistedPhaseIgnored(t *testing.T) {
 	// Phase "mystery" is not in the config order — should not be returned.
 	g, err := Build([]*item.Item{
 		{ID: "A", Phase: "1", Status: item.StatusDone},
-		{ID: "B", Phase: "mystery", Status: item.StatusDraft},
+		{ID: "B", Phase: "mystery", Status: item.StatusTodo},
 	}, WithPhaseOrder([]string{"1", "2"}))
 	if err != nil {
 		t.Fatalf("Build: %v", err)
@@ -387,8 +422,8 @@ func TestReady_ExplicitPhaseOrder(t *testing.T) {
 	// Without config, lexicographic would pick "1" over "Pre-1".
 	// With config, "Pre-1" is the active phase.
 	g, err := Build([]*item.Item{
-		{ID: "A", Phase: "Pre-1", Priority: item.PriorityHigh, Status: item.StatusDraft},
-		{ID: "B", Phase: "1", Priority: item.PriorityHigh, Status: item.StatusDraft},
+		{ID: "A", Phase: "Pre-1", Priority: item.PriorityHigh, Status: item.StatusTodo},
+		{ID: "B", Phase: "1", Priority: item.PriorityHigh, Status: item.StatusTodo},
 	}, WithPhaseOrder([]string{"Pre-1", "1", "2"}))
 	if err != nil {
 		t.Fatalf("Build: %v", err)
@@ -408,9 +443,9 @@ func TestReady_PhaseSorting(t *testing.T) {
 	// A is in the active phase, B is in a later phase, C has no phase.
 	// All same priority, no deps.
 	g := mustBuild(t, []*item.Item{
-		{ID: "A", Phase: "2", Priority: item.PriorityHigh, Status: item.StatusDraft},
-		{ID: "B", Phase: "1", Priority: item.PriorityHigh, Status: item.StatusDraft},
-		{ID: "C", Priority: item.PriorityHigh, Status: item.StatusDraft},
+		{ID: "A", Phase: "2", Priority: item.PriorityHigh, Status: item.StatusTodo},
+		{ID: "B", Phase: "1", Priority: item.PriorityHigh, Status: item.StatusTodo},
+		{ID: "C", Priority: item.PriorityHigh, Status: item.StatusTodo},
 	})
 	// Active phase = "1" (earliest incomplete)
 	ready := g.Ready()
@@ -432,8 +467,8 @@ func TestReady_PhaseSorting(t *testing.T) {
 func TestReady_PhaseCompletedAdvancesToNext(t *testing.T) {
 	g := mustBuild(t, []*item.Item{
 		{ID: "A", Phase: "1", Priority: item.PriorityHigh, Status: item.StatusDone},
-		{ID: "B", Phase: "2", Priority: item.PriorityHigh, Status: item.StatusDraft},
-		{ID: "C", Phase: "3", Priority: item.PriorityHigh, Status: item.StatusDraft},
+		{ID: "B", Phase: "2", Priority: item.PriorityHigh, Status: item.StatusTodo},
+		{ID: "C", Phase: "3", Priority: item.PriorityHigh, Status: item.StatusTodo},
 	})
 	ready := g.Ready()
 	// Active phase = "2", so B first, C last
@@ -453,12 +488,12 @@ func TestReady_PhaseCompletedAdvancesToNext(t *testing.T) {
 func TestReady_CriticalPathDepth(t *testing.T) {
 	// A has a 3-deep chain below it, B has a 1-deep chain. Same priority.
 	g := mustBuild(t, []*item.Item{
-		{ID: "A", Priority: item.PriorityHigh, Status: item.StatusDraft},
-		{ID: "B", Priority: item.PriorityHigh, Status: item.StatusDraft},
-		{ID: "C", Status: item.StatusDraft, Dependencies: []string{"A"}},
-		{ID: "D", Status: item.StatusDraft, Dependencies: []string{"C"}},
-		{ID: "E", Status: item.StatusDraft, Dependencies: []string{"D"}},
-		{ID: "F", Status: item.StatusDraft, Dependencies: []string{"B"}},
+		{ID: "A", Priority: item.PriorityHigh, Status: item.StatusTodo},
+		{ID: "B", Priority: item.PriorityHigh, Status: item.StatusTodo},
+		{ID: "C", Status: item.StatusTodo, Dependencies: []string{"A"}},
+		{ID: "D", Status: item.StatusTodo, Dependencies: []string{"C"}},
+		{ID: "E", Status: item.StatusTodo, Dependencies: []string{"D"}},
+		{ID: "F", Status: item.StatusTodo, Dependencies: []string{"B"}},
 	})
 	ready := g.Ready()
 	if len(ready) != 2 {
@@ -474,14 +509,14 @@ func TestReady_CriticalPathDepth(t *testing.T) {
 }
 
 func TestReady_CriticalPathIgnoresDoneItems(t *testing.T) {
-	// A has dependents C (done) and D (draft). B has dependent E (draft) and F (draft→E).
+	// A has dependents C (done) and D (todo). B has dependent E (todo) and F (todo, dep E).
 	g := mustBuild(t, []*item.Item{
-		{ID: "A", Priority: item.PriorityHigh, Status: item.StatusDraft},
-		{ID: "B", Priority: item.PriorityHigh, Status: item.StatusDraft},
+		{ID: "A", Priority: item.PriorityHigh, Status: item.StatusTodo},
+		{ID: "B", Priority: item.PriorityHigh, Status: item.StatusTodo},
 		{ID: "C", Status: item.StatusDone, Dependencies: []string{"A"}},
-		{ID: "D", Status: item.StatusDraft, Dependencies: []string{"A"}},
-		{ID: "E", Status: item.StatusDraft, Dependencies: []string{"B"}},
-		{ID: "F", Status: item.StatusDraft, Dependencies: []string{"E"}},
+		{ID: "D", Status: item.StatusTodo, Dependencies: []string{"A"}},
+		{ID: "E", Status: item.StatusTodo, Dependencies: []string{"B"}},
+		{ID: "F", Status: item.StatusTodo, Dependencies: []string{"E"}},
 	})
 	ready := g.Ready()
 	if len(ready) != 2 {
@@ -502,11 +537,11 @@ func TestReady_UnblockImpact(t *testing.T) {
 	// A and B have same priority, same critical depth.
 	// A unblocks 2 items immediately, B unblocks 0.
 	g := mustBuild(t, []*item.Item{
-		{ID: "A", Priority: item.PriorityHigh, Status: item.StatusDraft},
-		{ID: "B", Priority: item.PriorityHigh, Status: item.StatusDraft},
-		{ID: "C", Status: item.StatusDraft, Dependencies: []string{"A"}},
-		{ID: "D", Status: item.StatusDraft, Dependencies: []string{"A"}},
-		{ID: "E", Status: item.StatusDraft, Dependencies: []string{"B", "A"}},
+		{ID: "A", Priority: item.PriorityHigh, Status: item.StatusTodo},
+		{ID: "B", Priority: item.PriorityHigh, Status: item.StatusTodo},
+		{ID: "C", Status: item.StatusTodo, Dependencies: []string{"A"}},
+		{ID: "D", Status: item.StatusTodo, Dependencies: []string{"A"}},
+		{ID: "E", Status: item.StatusTodo, Dependencies: []string{"B", "A"}},
 	})
 	ready := g.Ready()
 	if len(ready) != 2 {
@@ -528,10 +563,10 @@ func TestReady_PriorityBeatsDepth(t *testing.T) {
 	// A is Low priority but has a deep chain. B is Critical with no chain.
 	// Priority should win.
 	g := mustBuild(t, []*item.Item{
-		{ID: "A", Priority: item.PriorityLow, Status: item.StatusDraft},
-		{ID: "B", Priority: item.PriorityCritical, Status: item.StatusDraft},
-		{ID: "C", Status: item.StatusDraft, Dependencies: []string{"A"}},
-		{ID: "D", Status: item.StatusDraft, Dependencies: []string{"C"}},
+		{ID: "A", Priority: item.PriorityLow, Status: item.StatusTodo},
+		{ID: "B", Priority: item.PriorityCritical, Status: item.StatusTodo},
+		{ID: "C", Status: item.StatusTodo, Dependencies: []string{"A"}},
+		{ID: "D", Status: item.StatusTodo, Dependencies: []string{"C"}},
 	})
 	ready := g.Ready()
 	if len(ready) != 2 {
@@ -547,8 +582,8 @@ func TestReady_PriorityBeatsDepth(t *testing.T) {
 func TestReady_CombinedPhaseAndPriority(t *testing.T) {
 	// B is Critical but wrong phase. A is High but active phase. Phase wins.
 	g := mustBuild(t, []*item.Item{
-		{ID: "A", Phase: "1", Priority: item.PriorityHigh, Status: item.StatusDraft},
-		{ID: "B", Phase: "2", Priority: item.PriorityCritical, Status: item.StatusDraft},
+		{ID: "A", Phase: "1", Priority: item.PriorityHigh, Status: item.StatusTodo},
+		{ID: "B", Phase: "2", Priority: item.PriorityCritical, Status: item.StatusTodo},
 	})
 	ready := g.Ready()
 	if len(ready) != 2 {
