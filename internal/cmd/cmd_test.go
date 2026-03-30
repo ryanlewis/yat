@@ -979,7 +979,7 @@ func newCustomTestContext(t *testing.T, items []*item.Item, jsonMode bool) (*Run
 	t.Helper()
 
 	isDone := func(s item.Status) bool { return s == "done" || s == "shipped" }
-	g, err := graphpkg.Build(items, isDone)
+	g, err := graphpkg.Build(items, graphpkg.WithIsDone(isDone))
 	if err != nil {
 		t.Fatalf("Build: %v", err)
 	}

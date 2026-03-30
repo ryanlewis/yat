@@ -66,6 +66,7 @@ type Config struct {
 	Dir          string            `yaml:"dir"`
 	ReadOnly     bool              `yaml:"readonly"`
 	Statuses     StatusGroups      `yaml:"statuses"`
+	Phases       []string          `yaml:"phases"`
 	FieldAliases map[string]string `yaml:"field_aliases"`
 }
 

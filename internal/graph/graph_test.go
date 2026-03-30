@@ -214,7 +214,7 @@ func TestReady_CustomIsDone(t *testing.T) {
 		{ID: "C", Status: "draft", Dependencies: []string{"B"}},
 	}
 
-	g, err := Build(items, isDone)
+	g, err := Build(items, WithIsDone(isDone))
 	if err != nil {
 		t.Fatalf("Build: %v", err)
 	}
@@ -237,7 +237,7 @@ func TestBlocked_CustomIsDone(t *testing.T) {
 		{ID: "C", Status: "draft", Dependencies: []string{"B"}},
 	}
 
-	g, err := Build(items, isDone)
+	g, err := Build(items, WithIsDone(isDone))
 	if err != nil {
 		t.Fatalf("Build: %v", err)
 	}
@@ -260,7 +260,7 @@ func TestWaitingOn_CustomIsDone(t *testing.T) {
 		{ID: "C", Status: "open", Dependencies: []string{"A", "B"}},
 	}
 
-	g, err := Build(items, isDone)
+	g, err := Build(items, WithIsDone(isDone))
 	if err != nil {
 		t.Fatalf("Build: %v", err)
 	}
@@ -313,6 +313,70 @@ func TestActivePhase_AllDone(t *testing.T) {
 	})
 	if got := g.ActivePhase(); got != "" {
 		t.Errorf("ActivePhase() = %q, want empty", got)
+	}
+}
+
+// --- ActivePhase with explicit order ---
+
+func TestActivePhase_ExplicitOrder(t *testing.T) {
+	// "Pre-1" sorts after "1" lexicographically, but config says it comes first.
+	g, err := Build([]*item.Item{
+		{ID: "A", Phase: "Pre-1", Status: item.StatusDraft},
+		{ID: "B", Phase: "1", Status: item.StatusDraft},
+		{ID: "C", Phase: "2", Status: item.StatusDraft},
+	}, WithPhaseOrder([]string{"Pre-1", "1", "2"}))
+	if err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+	if got := g.ActivePhase(); got != "Pre-1" {
+		t.Errorf("ActivePhase() = %q, want Pre-1", got)
+	}
+}
+
+func TestActivePhase_ExplicitOrderSkipsDone(t *testing.T) {
+	g, err := Build([]*item.Item{
+		{ID: "A", Phase: "Pre-1", Status: item.StatusDone},
+		{ID: "B", Phase: "1", Status: item.StatusDraft},
+		{ID: "C", Phase: "2", Status: item.StatusDraft},
+	}, WithPhaseOrder([]string{"Pre-1", "1", "2"}))
+	if err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+	if got := g.ActivePhase(); got != "1" {
+		t.Errorf("ActivePhase() = %q, want 1", got)
+	}
+}
+
+func TestActivePhase_ExplicitOrderUnlistedPhaseIgnored(t *testing.T) {
+	// Phase "mystery" is not in the config order — should not be returned.
+	g, err := Build([]*item.Item{
+		{ID: "A", Phase: "1", Status: item.StatusDone},
+		{ID: "B", Phase: "mystery", Status: item.StatusDraft},
+	}, WithPhaseOrder([]string{"1", "2"}))
+	if err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+	if got := g.ActivePhase(); got != "" {
+		t.Errorf("ActivePhase() = %q, want empty (unlisted phase ignored)", got)
+	}
+}
+
+func TestReady_ExplicitPhaseOrder(t *testing.T) {
+	// Without config, lexicographic would pick "1" over "Pre-1".
+	// With config, "Pre-1" is the active phase.
+	g, err := Build([]*item.Item{
+		{ID: "A", Phase: "Pre-1", Priority: item.PriorityHigh, Status: item.StatusDraft},
+		{ID: "B", Phase: "1", Priority: item.PriorityHigh, Status: item.StatusDraft},
+	}, WithPhaseOrder([]string{"Pre-1", "1", "2"}))
+	if err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+	ready := g.Ready()
+	if len(ready) != 2 {
+		t.Fatalf("expected 2 ready, got %d", len(ready))
+	}
+	if ready[0].ID != "A" {
+		t.Errorf("ready[0] = %s, want A (Pre-1 is active phase per config)", ready[0].ID)
 	}
 }
 

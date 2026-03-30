@@ -11,10 +11,11 @@ import (
 
 // Graph holds the dependency relationships between items.
 type Graph struct {
-	items   map[string]*item.Item
-	forward map[string][]string // item -> its dependencies
-	reverse map[string][]string // item -> items that depend on it
-	isDone  func(item.Status) bool
+	items      map[string]*item.Item
+	forward    map[string][]string // item -> its dependencies
+	reverse    map[string][]string // item -> items that depend on it
+	isDone     func(item.Status) bool
+	phaseOrder []string // explicit phase ordering from config; nil = lexicographic
 }
 
 // Edge represents a dependency relationship.
@@ -63,20 +64,34 @@ func (g *Graph) Edges() []Edge {
 	return edges
 }
 
+// BuildOption configures optional behavior of Build.
+type BuildOption func(*Graph)
+
+// WithIsDone sets a custom function to determine if an item's status means "done".
+func WithIsDone(fn func(item.Status) bool) BuildOption {
+	return func(g *Graph) { g.isDone = fn }
+}
+
+// WithPhaseOrder sets an explicit phase ordering for ActivePhase.
+// When set, the active phase is the first entry with incomplete items
+// instead of the lexicographically earliest.
+func WithPhaseOrder(phases []string) BuildOption {
+	return func(g *Graph) { g.phaseOrder = phases }
+}
+
 // Build constructs a dependency graph from a slice of items.
 // If isDone is nil, defaults to checking for item.StatusDone.
 // Returns an error if any item references a dependency ID that does not exist.
-func Build(items []*item.Item, isDone ...func(item.Status) bool) (*Graph, error) {
-	doneFn := func(s item.Status) bool { return s == item.StatusDone }
-	if len(isDone) > 0 && isDone[0] != nil {
-		doneFn = isDone[0]
-	}
-
+func Build(items []*item.Item, opts ...BuildOption) (*Graph, error) {
 	g := &Graph{
 		items:   make(map[string]*item.Item, len(items)),
 		forward: make(map[string][]string, len(items)),
 		reverse: make(map[string][]string, len(items)),
-		isDone:  doneFn,
+		isDone:  func(s item.Status) bool { return s == item.StatusDone },
+	}
+
+	for _, opt := range opts {
+		opt(g)
 	}
 
 	for _, i := range items {
@@ -358,29 +373,43 @@ func (g *Graph) computeInDegree() (inDegree map[string]int, roots []string) {
 	return inDegree, roots
 }
 
-// ActivePhase returns the earliest phase (lexicographically) that still has
-// at least one non-done item. Returns "" if no items have a phase set.
+// ActivePhase returns the first phase that still has at least one non-done item.
+// If a phase order was configured via WithPhaseOrder, it uses that order.
+// Otherwise it falls back to lexicographic order.
+// Returns "" if no items have a phase set or all phased items are done.
 func (g *Graph) ActivePhase() string {
-	seen := make(map[string]struct{})
+	incomplete := make(map[string]struct{})
 
 	for _, it := range g.items {
 		if it.Phase != "" && !g.isDone(it.Status) {
-			seen[it.Phase] = struct{}{}
+			incomplete[it.Phase] = struct{}{}
 		}
 	}
 
-	phases := make([]string, 0, len(seen))
-	for p := range seen {
+	if len(incomplete) == 0 {
+		return ""
+	}
+
+	// Use explicit order if configured.
+	if len(g.phaseOrder) > 0 {
+		for _, p := range g.phaseOrder {
+			if _, ok := incomplete[p]; ok {
+				return p
+			}
+		}
+
+		return ""
+	}
+
+	// Fall back to lexicographic order.
+	phases := make([]string, 0, len(incomplete))
+	for p := range incomplete {
 		phases = append(phases, p)
 	}
 
 	sort.Strings(phases)
 
-	if len(phases) > 0 {
-		return phases[0]
-	}
-
-	return ""
+	return phases[0]
 }
 
 // DeepestLayer returns the last layer index and the items in it.
