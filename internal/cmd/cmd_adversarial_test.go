@@ -295,6 +295,108 @@ func TestStatusCmd_CustomType(t *testing.T) {
 	}
 }
 
+// --- StatusCmd phase output ---
+
+func TestStatusCmd_PhasesInText(t *testing.T) {
+	items := []*item.Item{
+		{ID: "A", Phase: "1", Status: item.StatusDone, Points: 3},
+		{ID: "B", Phase: "1", Status: item.StatusDone, Points: 2},
+		{ID: "C", Phase: "2", Status: item.StatusDraft, Points: 5},
+		{ID: "D", Phase: "2", Status: item.StatusInProgress, Points: 8},
+		{ID: "E", Phase: "3", Status: item.StatusDraft, Points: 1},
+	}
+	rc, buf := newTestContext(t, items, false)
+
+	cmd := &StatusCmd{}
+	if err := cmd.Run(rc); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+
+	out := buf.String()
+	if !strings.Contains(out, "Phases:") {
+		t.Errorf("expected 'Phases:' section, got:\n%s", out)
+	}
+	// Active phase (2) should have a marker
+	if !strings.Contains(out, "2:") {
+		t.Errorf("expected phase 2 in output, got:\n%s", out)
+	}
+	if !strings.Contains(out, "*") {
+		t.Errorf("expected active phase marker '*', got:\n%s", out)
+	}
+}
+
+func TestStatusCmd_PhasesInJSON(t *testing.T) {
+	items := []*item.Item{
+		{ID: "A", Phase: "1", Status: item.StatusDone, Points: 3},
+		{ID: "B", Phase: "2", Status: item.StatusDraft, Points: 5},
+		{ID: "C", Phase: "2", Status: item.StatusInProgress, Points: 8},
+	}
+	rc, buf := newTestContext(t, items, true)
+
+	cmd := &StatusCmd{}
+	if err := cmd.Run(rc); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+
+	var result statusJSON
+	if err := json.Unmarshal(buf.Bytes(), &result); err != nil {
+		t.Fatalf("JSON unmarshal: %v", err)
+	}
+	if result.ActivePhase != "2" {
+		t.Errorf("ActivePhase = %q, want 2", result.ActivePhase)
+	}
+	if len(result.ByPhase) != 2 {
+		t.Errorf("ByPhase has %d entries, want 2", len(result.ByPhase))
+	}
+	if p1, ok := result.ByPhase["1"]; !ok || p1.Count != 1 || p1.Points != 3 {
+		t.Errorf("ByPhase[1] = %+v, want {Count:1 Points:3}", result.ByPhase["1"])
+	}
+	if p2, ok := result.ByPhase["2"]; !ok || p2.Count != 2 || p2.Points != 13 {
+		t.Errorf("ByPhase[2] = %+v, want {Count:2 Points:13}", result.ByPhase["2"])
+	}
+}
+
+func TestStatusCmd_NoPhasesHidesSection(t *testing.T) {
+	items := []*item.Item{
+		{ID: "A", Status: item.StatusDraft},
+		{ID: "B", Status: item.StatusDone},
+	}
+	rc, buf := newTestContext(t, items, false)
+
+	cmd := &StatusCmd{}
+	if err := cmd.Run(rc); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+
+	out := buf.String()
+	if strings.Contains(out, "Phases:") {
+		t.Errorf("should not show Phases section when no items have phases, got:\n%s", out)
+	}
+}
+
+func TestStatusCmd_NoPhasesJSON(t *testing.T) {
+	items := []*item.Item{
+		{ID: "A", Status: item.StatusDraft},
+	}
+	rc, buf := newTestContext(t, items, true)
+
+	cmd := &StatusCmd{}
+	if err := cmd.Run(rc); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+
+	var result statusJSON
+	if err := json.Unmarshal(buf.Bytes(), &result); err != nil {
+		t.Fatalf("JSON unmarshal: %v", err)
+	}
+	if result.ActivePhase != "" {
+		t.Errorf("ActivePhase = %q, want empty", result.ActivePhase)
+	}
+	if len(result.ByPhase) != 0 {
+		t.Errorf("ByPhase should be empty, got %d entries", len(result.ByPhase))
+	}
+}
+
 // --- BlockedCmd edge cases ---
 
 func TestBlockedCmd_EmptyJSON(t *testing.T) {

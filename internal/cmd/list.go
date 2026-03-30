@@ -9,7 +9,9 @@ import (
 )
 
 // ListCmd shows all items grouped by status.
-type ListCmd struct{}
+type ListCmd struct {
+	Phase string `help:"Filter by phase. Use \"active\" for the current active phase." short:"p"`
+}
 
 type listItemJSON struct {
 	ID        string   `json:"id"`
@@ -33,13 +35,24 @@ type itemGroup struct {
 
 // Run executes the list command.
 func (l *ListCmd) Run(rc *RunContext) error {
-	if len(rc.Items) == 0 {
+	items := rc.Items
+
+	if l.Phase != "" {
+		phase := l.Phase
+		if phase == "active" {
+			phase = rc.Graph.ActivePhase()
+		}
+
+		items = filterByPhase(items, phase)
+	}
+
+	if len(items) == 0 {
 		rc.printf("No items found.\n")
 
 		return nil
 	}
 
-	groups := l.groupItems(rc)
+	groups := l.groupItems(rc, items)
 
 	if rc.JSON {
 		return l.runJSON(rc, groups)
@@ -48,10 +61,22 @@ func (l *ListCmd) Run(rc *RunContext) error {
 	return l.runText(rc, groups)
 }
 
-func (l *ListCmd) groupItems(rc *RunContext) []itemGroup {
+func filterByPhase(items []*item.Item, phase string) []*item.Item {
+	var out []*item.Item
+
+	for _, it := range items {
+		if it.Phase == phase {
+			out = append(out, it)
+		}
+	}
+
+	return out
+}
+
+func (l *ListCmd) groupItems(rc *RunContext, items []*item.Item) []itemGroup {
 	var active, ready, blocked, done []groupedItem
 
-	for _, it := range rc.Items {
+	for _, it := range items {
 		st := string(it.Status)
 
 		switch {

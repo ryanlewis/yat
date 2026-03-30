@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 )
 
@@ -13,6 +14,8 @@ type statusJSON struct {
 	TotalPoints  int                    `json:"total_points"`
 	ByType       map[string]int         `json:"by_type"`
 	ByStatus     map[string]statusGroup `json:"by_status"`
+	ActivePhase  string                 `json:"active_phase"`
+	ByPhase      map[string]statusGroup `json:"by_phase"`
 	ReadyNow     []string               `json:"ready_now"`
 	DeepestLayer int                    `json:"deepest_layer"`
 	DeepestItems []string               `json:"deepest_items"`
@@ -23,21 +26,48 @@ type statusGroup struct {
 	Points int `json:"points"`
 }
 
+type statusData struct {
+	totalItems   int
+	totalPoints  int
+	byType       map[string]int
+	groups       map[string]*groupAccum
+	byPhase      map[string]*groupAccum
+	activePhase  string
+	readyIDs     []string
+	deepestLayer int
+	deepestItems []string
+}
+
+type groupAccum struct {
+	count  int
+	points int
+}
+
 // Run executes the status command.
 func (s *StatusCmd) Run(rc *RunContext) error {
+	data, err := s.collect(rc)
+	if err != nil {
+		return err
+	}
+
+	if rc.JSON {
+		return s.writeJSON(rc, data)
+	}
+
+	return s.writeText(rc, data)
+}
+
+func (s *StatusCmd) collect(rc *RunContext) (*statusData, error) {
 	byType := make(map[string]int)
 	var totalPoints int
-
-	type groupAccum struct {
-		count  int
-		points int
-	}
 
 	groups := map[string]*groupAccum{
 		"done":    {},
 		"active":  {},
 		"initial": {},
 	}
+
+	byPhase := make(map[string]*groupAccum)
 
 	for _, it := range rc.Items {
 		byType[it.Type]++
@@ -55,7 +85,16 @@ func (s *StatusCmd) Run(rc *RunContext) error {
 			groups["initial"].count++
 			groups["initial"].points += it.Points
 		default:
-			return fmt.Errorf("unexpected status %q for item %s", it.Status, it.ID)
+			return nil, fmt.Errorf("unexpected status %q for item %s", it.Status, it.ID)
+		}
+
+		if it.Phase != "" {
+			if byPhase[it.Phase] == nil {
+				byPhase[it.Phase] = &groupAccum{}
+			}
+
+			byPhase[it.Phase].count++
+			byPhase[it.Phase].points += it.Points
 		}
 	}
 
@@ -68,30 +107,48 @@ func (s *StatusCmd) Run(rc *RunContext) error {
 
 	deepestLayer, deepestItems := rc.Graph.DeepestLayer()
 
-	if rc.JSON {
-		byStatus := make(map[string]statusGroup, len(groups))
-		for name, g := range groups {
-			byStatus[name] = statusGroup{Count: g.count, Points: g.points}
-		}
+	return &statusData{
+		totalItems:   len(rc.Items),
+		totalPoints:  totalPoints,
+		byType:       byType,
+		groups:       groups,
+		byPhase:      byPhase,
+		activePhase:  rc.Graph.ActivePhase(),
+		readyIDs:     readyIDs,
+		deepestLayer: deepestLayer,
+		deepestItems: deepestItems,
+	}, nil
+}
 
-		return rc.writeJSON(statusJSON{
-			TotalItems:   len(rc.Items),
-			TotalPoints:  totalPoints,
-			ByType:       byType,
-			ByStatus:     byStatus,
-			ReadyNow:     readyIDs,
-			DeepestLayer: deepestLayer,
-			DeepestItems: deepestItems,
-		})
+func (s *StatusCmd) writeJSON(rc *RunContext, d *statusData) error {
+	byStatus := make(map[string]statusGroup, len(d.groups))
+	for name, g := range d.groups {
+		byStatus[name] = statusGroup{Count: g.count, Points: g.points}
 	}
 
-	// Summary line
-	total := len(rc.Items)
-	typeParts := formatTypeCounts(byType)
-	rc.printf("%d items: %s\n", total, strings.Join(typeParts, ", "))
-	rc.printf("Total points: %d\n\n", totalPoints)
+	phaseGroups := make(map[string]statusGroup, len(d.byPhase))
+	for name, g := range d.byPhase {
+		phaseGroups[name] = statusGroup{Count: g.count, Points: g.points}
+	}
 
-	// Status breakdown — use group labels with representative status names
+	return rc.writeJSON(statusJSON{
+		TotalItems:   d.totalItems,
+		TotalPoints:  d.totalPoints,
+		ByType:       d.byType,
+		ByStatus:     byStatus,
+		ActivePhase:  d.activePhase,
+		ByPhase:      phaseGroups,
+		ReadyNow:     d.readyIDs,
+		DeepestLayer: d.deepestLayer,
+		DeepestItems: d.deepestItems,
+	})
+}
+
+func (s *StatusCmd) writeText(rc *RunContext, d *statusData) error {
+	typeParts := formatTypeCounts(d.byType)
+	rc.printf("%d items: %s\n", d.totalItems, strings.Join(typeParts, ", "))
+	rc.printf("Total points: %d\n\n", d.totalPoints)
+
 	w := rc.newTabWriter()
 	for _, entry := range []struct {
 		label string
@@ -101,7 +158,7 @@ func (s *StatusCmd) Run(rc *RunContext) error {
 		{"active", "active"},
 		{"initial", "initial"},
 	} {
-		g := groups[entry.key]
+		g := d.groups[entry.key]
 		fmt.Fprintf(w, "  %s:\t%d\t(%d pts)\n", entry.label, g.count, g.points)
 	}
 
@@ -109,14 +166,42 @@ func (s *StatusCmd) Run(rc *RunContext) error {
 		return err
 	}
 
-	rc.printf("\n")
+	if len(d.byPhase) > 0 {
+		rc.printf("\nPhases:\n")
 
-	if len(readyIDs) > 0 {
-		rc.printf("Ready now: %s\n", strings.Join(readyIDs, ", "))
+		phaseNames := make([]string, 0, len(d.byPhase))
+		for name := range d.byPhase {
+			phaseNames = append(phaseNames, name)
+		}
+
+		sort.Strings(phaseNames)
+
+		pw := rc.newTabWriter()
+
+		for _, name := range phaseNames {
+			g := d.byPhase[name]
+			marker := ""
+
+			if name == d.activePhase {
+				marker = " *"
+			}
+
+			fmt.Fprintf(pw, "  %s:\t%d\t(%d pts)%s\n", name, g.count, g.points, marker)
+		}
+
+		if err := pw.Flush(); err != nil {
+			return err
+		}
 	}
 
-	if len(deepestItems) > 0 {
-		rc.printf("Deepest layer: %d (%s)\n", deepestLayer, strings.Join(deepestItems, ", "))
+	rc.printf("\n")
+
+	if len(d.readyIDs) > 0 {
+		rc.printf("Ready now: %s\n", strings.Join(d.readyIDs, ", "))
+	}
+
+	if len(d.deepestItems) > 0 {
+		rc.printf("Deepest layer: %d (%s)\n", d.deepestLayer, strings.Join(d.deepestItems, ", "))
 	}
 
 	return nil

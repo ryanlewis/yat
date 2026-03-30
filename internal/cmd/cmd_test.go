@@ -124,9 +124,10 @@ func TestNextCmd_Text(t *testing.T) {
 	}
 
 	out := buf.String()
-	// TK-002 and TK-003 are both High priority; TK-002 sorts first by ID
-	if !strings.Contains(out, "TK-002") {
-		t.Errorf("expected TK-002 as next item, got:\n%s", out)
+	// TK-002 and TK-003 are both High priority and same critical depth;
+	// TK-003 unblocks ST-001, TK-002 unblocks nothing → TK-003 first
+	if !strings.Contains(out, "TK-003") {
+		t.Errorf("expected TK-003 as next item, got:\n%s", out)
 	}
 }
 
@@ -478,6 +479,191 @@ func TestGraphCmd_Empty(t *testing.T) {
 	}
 }
 
+// --- TreeCmd ---
+
+func TestTreeCmd_Text(t *testing.T) {
+	items := makeTestItems()
+	rc, buf := newTestContext(t, items, false)
+
+	cmd := &TreeCmd{}
+	if err := cmd.Run(rc); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+
+	out := buf.String()
+
+	// All items should appear
+	for _, it := range items {
+		if !strings.Contains(out, it.ID) {
+			t.Errorf("expected %s in output, got:\n%s", it.ID, out)
+		}
+	}
+
+	// Should contain box-drawing characters for the graph
+	for _, ch := range []string{"●", "│", "─"} {
+		if !strings.Contains(out, ch) {
+			t.Errorf("expected %q in output, got:\n%s", ch, out)
+		}
+	}
+
+	// Should contain junction characters (connections between nodes)
+	hasJunction := strings.ContainsAny(out, "├┤└┘")
+	if !hasJunction {
+		t.Errorf("expected junction characters in output, got:\n%s", out)
+	}
+}
+
+func TestTreeCmd_JSON(t *testing.T) {
+	items := makeTestItems()
+	rc, buf := newTestContext(t, items, true)
+
+	cmd := &TreeCmd{}
+	if err := cmd.Run(rc); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+
+	var result treeOutputJSON
+	if err := json.Unmarshal(buf.Bytes(), &result); err != nil {
+		t.Fatalf("JSON unmarshal: %v", err)
+	}
+
+	if len(result.Nodes) != len(items) {
+		t.Errorf("expected %d nodes, got %d", len(items), len(result.Nodes))
+	}
+
+	if len(result.Edges) == 0 {
+		t.Error("expected edges in tree JSON")
+	}
+
+	// Every node should have a column assignment
+	for _, n := range result.Nodes {
+		if n.ID == "" {
+			t.Error("expected non-empty node ID")
+		}
+	}
+}
+
+func TestTreeCmd_Empty(t *testing.T) {
+	rc, buf := newTestContext(t, []*item.Item{}, false)
+
+	cmd := &TreeCmd{}
+	if err := cmd.Run(rc); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+
+	if !strings.Contains(buf.String(), "No items found") {
+		t.Errorf("expected empty message, got:\n%s", buf.String())
+	}
+}
+
+func TestTreeCmd_EmptyJSON(t *testing.T) {
+	rc, buf := newTestContext(t, []*item.Item{}, true)
+
+	cmd := &TreeCmd{}
+	if err := cmd.Run(rc); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+
+	var result treeOutputJSON
+	if err := json.Unmarshal(buf.Bytes(), &result); err != nil {
+		t.Fatalf("JSON unmarshal: %v", err)
+	}
+
+	if len(result.Nodes) != 0 {
+		t.Errorf("expected 0 nodes, got %d", len(result.Nodes))
+	}
+
+	if len(result.Edges) != 0 {
+		t.Errorf("expected 0 edges, got %d", len(result.Edges))
+	}
+}
+
+func TestTreeCmd_SingleItem(t *testing.T) {
+	items := []*item.Item{
+		{ID: "SOLO-1", Title: "Only item", Type: "Task", Status: item.StatusDraft},
+	}
+	rc, buf := newTestContext(t, items, false)
+
+	cmd := &TreeCmd{}
+	if err := cmd.Run(rc); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+
+	out := buf.String()
+	if !strings.Contains(out, "●") {
+		t.Errorf("expected node marker, got:\n%s", out)
+	}
+
+	if !strings.Contains(out, "SOLO-1") {
+		t.Errorf("expected SOLO-1 in output, got:\n%s", out)
+	}
+
+	// No junction characters for a single item
+	if strings.ContainsAny(out, "├┤└┘─") {
+		t.Errorf("expected no connections for single item, got:\n%s", out)
+	}
+}
+
+func TestTreeCmd_LinearChain(t *testing.T) {
+	items := []*item.Item{
+		{ID: "A", Title: "First", Type: "Task", Status: item.StatusDone},
+		{ID: "B", Title: "Second", Type: "Task", Status: item.StatusDraft, Dependencies: []string{"A"}},
+		{ID: "C", Title: "Third", Type: "Task", Status: item.StatusDraft, Dependencies: []string{"B"}},
+	}
+	rc, buf := newTestContext(t, items, false)
+
+	cmd := &TreeCmd{}
+	if err := cmd.Run(rc); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+
+	out := buf.String()
+
+	// All items in column 0 — no horizontal connections
+	if strings.ContainsAny(out, "├┤└┘─") {
+		t.Errorf("expected no horizontal connections for linear chain, got:\n%s", out)
+	}
+
+	// Should have three node markers
+	if strings.Count(out, "●") != 3 {
+		t.Errorf("expected 3 node markers, got %d in:\n%s", strings.Count(out, "●"), out)
+	}
+}
+
+func TestTreeCmd_Diamond(t *testing.T) {
+	items := []*item.Item{
+		{ID: "A", Title: "Root", Type: "Task", Status: item.StatusDone},
+		{ID: "B", Title: "Left", Type: "Task", Status: item.StatusDraft, Dependencies: []string{"A"}},
+		{ID: "C", Title: "Right", Type: "Task", Status: item.StatusDraft, Dependencies: []string{"A"}},
+		{ID: "D", Title: "Merge", Type: "Task", Status: item.StatusDraft, Dependencies: []string{"B", "C"}},
+	}
+	rc, buf := newTestContext(t, items, false)
+
+	cmd := &TreeCmd{}
+	if err := cmd.Run(rc); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+
+	out := buf.String()
+
+	// All 4 items present
+	for _, id := range []string{"A", "B", "C", "D"} {
+		if !strings.Contains(out, id) {
+			t.Errorf("expected %s in output, got:\n%s", id, out)
+		}
+	}
+
+	// Should have merge characters (the diamond merges)
+	hasJunction := strings.ContainsAny(out, "├┤└┘")
+	if !hasJunction {
+		t.Errorf("expected junction characters for diamond merge, got:\n%s", out)
+	}
+
+	if strings.Count(out, "●") != 4 {
+		t.Errorf("expected 4 node markers, got %d in:\n%s", strings.Count(out, "●"), out)
+	}
+}
+
 // --- StartCmd (happy path) ---
 
 func writeItemFile(t *testing.T, dir, filename, content string) string {
@@ -711,8 +897,9 @@ func TestNextCmd_JSON(t *testing.T) {
 	if err := json.Unmarshal(buf.Bytes(), &result); err != nil {
 		t.Fatalf("JSON unmarshal: %v", err)
 	}
-	if result.ID != "TK-002" {
-		t.Errorf("ID = %q, want TK-002", result.ID)
+	// TK-003 unblocks ST-001, TK-002 unblocks nothing → TK-003 first
+	if result.ID != "TK-003" {
+		t.Errorf("ID = %q, want TK-003", result.ID)
 	}
 	if result.Priority != "High" {
 		t.Errorf("Priority = %q, want High", result.Priority)
@@ -1003,6 +1190,98 @@ func TestListCmd_Empty(t *testing.T) {
 	rc, buf := newTestContext(t, []*item.Item{}, false)
 
 	cmd := &ListCmd{}
+	if err := cmd.Run(rc); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+
+	if !strings.Contains(buf.String(), "No items found") {
+		t.Errorf("expected empty message, got:\n%s", buf.String())
+	}
+}
+
+// --- ListCmd --phase ---
+
+func TestListCmd_PhaseFilter(t *testing.T) {
+	items := []*item.Item{
+		{ID: "A", Phase: "1", Status: item.StatusDone},
+		{ID: "B", Phase: "1", Status: item.StatusDraft},
+		{ID: "C", Phase: "2", Status: item.StatusDraft},
+		{ID: "D", Status: item.StatusDraft},
+	}
+	rc, buf := newTestContext(t, items, false)
+
+	cmd := &ListCmd{Phase: "1"}
+	if err := cmd.Run(rc); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+
+	out := buf.String()
+	if !strings.Contains(out, "A") || !strings.Contains(out, "B") {
+		t.Errorf("expected phase 1 items A and B, got:\n%s", out)
+	}
+	if strings.Contains(out, " C") || strings.Contains(out, " D") {
+		t.Errorf("should not contain items from other phases, got:\n%s", out)
+	}
+}
+
+func TestListCmd_PhaseActive(t *testing.T) {
+	items := []*item.Item{
+		{ID: "A", Phase: "1", Status: item.StatusDone},
+		{ID: "B", Phase: "2", Status: item.StatusDraft},
+		{ID: "C", Phase: "2", Status: item.StatusInProgress},
+		{ID: "D", Phase: "3", Status: item.StatusDraft},
+	}
+	rc, buf := newTestContext(t, items, false)
+
+	// "active" should resolve to phase "2" (earliest incomplete)
+	cmd := &ListCmd{Phase: "active"}
+	if err := cmd.Run(rc); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+
+	out := buf.String()
+	if !strings.Contains(out, "B") || !strings.Contains(out, "C") {
+		t.Errorf("expected phase 2 items B and C, got:\n%s", out)
+	}
+	if strings.Contains(out, " A") || strings.Contains(out, " D") {
+		t.Errorf("should not contain items from other phases, got:\n%s", out)
+	}
+}
+
+func TestListCmd_PhaseFilter_JSON(t *testing.T) {
+	items := []*item.Item{
+		{ID: "A", Phase: "1", Status: item.StatusDraft},
+		{ID: "B", Phase: "2", Status: item.StatusDraft},
+		{ID: "C", Phase: "2", Status: item.StatusDone},
+	}
+	rc, buf := newTestContext(t, items, true)
+
+	cmd := &ListCmd{Phase: "2"}
+	if err := cmd.Run(rc); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+
+	var result []listItemJSON
+	if err := json.Unmarshal(buf.Bytes(), &result); err != nil {
+		t.Fatalf("JSON unmarshal: %v", err)
+	}
+	if len(result) != 2 {
+		t.Fatalf("expected 2 items, got %d", len(result))
+	}
+	for _, r := range result {
+		if r.ID != "B" && r.ID != "C" {
+			t.Errorf("unexpected item %s in phase 2 filter", r.ID)
+		}
+	}
+}
+
+func TestListCmd_PhaseNoMatches(t *testing.T) {
+	items := []*item.Item{
+		{ID: "A", Phase: "1", Status: item.StatusDraft},
+	}
+	rc, buf := newTestContext(t, items, false)
+
+	cmd := &ListCmd{Phase: "99"}
 	if err := cmd.Run(rc); err != nil {
 		t.Fatalf("Run: %v", err)
 	}

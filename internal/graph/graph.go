@@ -135,7 +135,8 @@ func (g *Graph) detectCycles() error {
 }
 
 // Ready returns items where status != done and all dependencies have status == done.
-// Results are sorted by priority (Critical first), then by ID.
+// Results are sorted by: phase match, priority, critical path depth (descending),
+// unblock impact (descending), then ID.
 func (g *Graph) Ready() []*item.Item {
 	var ready []*item.Item
 
@@ -149,17 +150,68 @@ func (g *Graph) Ready() []*item.Item {
 		}
 	}
 
+	activePhase := g.ActivePhase()
+	depths := g.criticalDepthMap()
+
+	unblockCounts := make(map[string]int, len(ready))
+	for _, i := range ready {
+		unblockCounts[i.ID] = len(g.UnblockedBy(i.ID))
+	}
+
 	sort.Slice(ready, func(a, b int) bool {
-		pa := item.PriorityRank(ready[a].Priority)
-		pb := item.PriorityRank(ready[b].Priority)
+		ia, ib := ready[a], ready[b]
+
+		// 1. Phase match (active phase first, no phase neutral, wrong phase last)
+		pa := phaseRank(ia.Phase, activePhase)
+		pb := phaseRank(ib.Phase, activePhase)
 		if pa != pb {
 			return pa < pb
 		}
 
-		return ready[a].ID < ready[b].ID
+		// 2. Priority
+		pra := item.PriorityRank(ia.Priority)
+		prb := item.PriorityRank(ib.Priority)
+		if pra != prb {
+			return pra < prb
+		}
+
+		// 3. Critical path depth (deeper chain = more important)
+		da := depths[ia.ID]
+		db := depths[ib.ID]
+		if da != db {
+			return da > db
+		}
+
+		// 4. Unblock impact (more immediate unblocks = more important)
+		ua := unblockCounts[ia.ID]
+		ub := unblockCounts[ib.ID]
+		if ua != ub {
+			return ua > ub
+		}
+
+		// 5. ID tiebreaker
+		return ia.ID < ib.ID
 	})
 
 	return ready
+}
+
+// phaseRank returns a sort rank for an item's phase relative to the active phase.
+// 0 = matches active phase, 1 = no phase set (neutral), 2 = wrong phase.
+func phaseRank(itemPhase, activePhase string) int {
+	if activePhase == "" {
+		return 1
+	}
+
+	if itemPhase == activePhase {
+		return 0
+	}
+
+	if itemPhase == "" {
+		return 1
+	}
+
+	return 2
 }
 
 // Blocked returns items where status != done and at least one dependency is not done.
@@ -306,6 +358,31 @@ func (g *Graph) computeInDegree() (inDegree map[string]int, roots []string) {
 	return inDegree, roots
 }
 
+// ActivePhase returns the earliest phase (lexicographically) that still has
+// at least one non-done item. Returns "" if no items have a phase set.
+func (g *Graph) ActivePhase() string {
+	seen := make(map[string]struct{})
+
+	for _, it := range g.items {
+		if it.Phase != "" && !g.isDone(it.Status) {
+			seen[it.Phase] = struct{}{}
+		}
+	}
+
+	phases := make([]string, 0, len(seen))
+	for p := range seen {
+		phases = append(phases, p)
+	}
+
+	sort.Strings(phases)
+
+	if len(phases) > 0 {
+		return phases[0]
+	}
+
+	return ""
+}
+
 // DeepestLayer returns the last layer index and the items in it.
 func (g *Graph) DeepestLayer() (depth int, items []string) {
 	layers := g.TopologicalLayers()
@@ -316,6 +393,39 @@ func (g *Graph) DeepestLayer() (depth int, items []string) {
 	last := len(layers) - 1
 
 	return last, layers[last]
+}
+
+// criticalDepthMap computes, for each non-done item, the longest chain of
+// non-done transitive dependents below it. Leaf items (no non-done dependents)
+// have depth 0.
+func (g *Graph) criticalDepthMap() map[string]int {
+	layers := g.TopologicalLayers()
+	depth := make(map[string]int, len(g.items))
+
+	for i := len(layers) - 1; i >= 0; i-- {
+		for _, id := range layers[i] {
+			if g.isDone(g.items[id].Status) {
+				continue
+			}
+
+			maxChild := 0
+
+			for _, depID := range g.reverse[id] {
+				dep, ok := g.items[depID]
+				if !ok || g.isDone(dep.Status) {
+					continue
+				}
+
+				if depth[depID]+1 > maxChild {
+					maxChild = depth[depID] + 1
+				}
+			}
+
+			depth[id] = maxChild
+		}
+	}
+
+	return depth
 }
 
 // AllDepsDone reports whether all dependencies of the given item are done.

@@ -41,9 +41,9 @@ func TestReady_AllDraft(t *testing.T) {
 		t.Fatalf("expected 2 ready items, got %d: %v", len(ready), ids)
 	}
 
-	// Both are Critical, so sorted by ID
-	if ready[0].ID != "SP-001" || ready[1].ID != "TK-001" {
-		t.Errorf("ready = [%s, %s], want [SP-001, TK-001]", ready[0].ID, ready[1].ID)
+	// Both Critical, same critical depth; TK-001 unblocks TK-003, SP-001 unblocks nothing
+	if ready[0].ID != "TK-001" || ready[1].ID != "SP-001" {
+		t.Errorf("ready = [%s, %s], want [TK-001, SP-001]", ready[0].ID, ready[1].ID)
 	}
 }
 
@@ -268,6 +268,208 @@ func TestWaitingOn_CustomIsDone(t *testing.T) {
 	waiting := g.WaitingOn("C")
 	if len(waiting) != 1 || waiting[0] != "B" {
 		t.Errorf("waiting = %v, want [B]", waiting)
+	}
+}
+
+// --- ActivePhase ---
+
+func TestActivePhase_NoPhases(t *testing.T) {
+	g := mustBuild(t, []*item.Item{
+		{ID: "A", Status: item.StatusDraft},
+		{ID: "B", Status: item.StatusDraft},
+	})
+	if got := g.ActivePhase(); got != "" {
+		t.Errorf("ActivePhase() = %q, want empty", got)
+	}
+}
+
+func TestActivePhase_EarliestIncomplete(t *testing.T) {
+	g := mustBuild(t, []*item.Item{
+		{ID: "A", Phase: "1", Status: item.StatusDone},
+		{ID: "B", Phase: "1", Status: item.StatusDone},
+		{ID: "C", Phase: "2", Status: item.StatusDraft},
+		{ID: "D", Phase: "3", Status: item.StatusDraft},
+	})
+	if got := g.ActivePhase(); got != "2" {
+		t.Errorf("ActivePhase() = %q, want 2", got)
+	}
+}
+
+func TestActivePhase_FirstPhaseStillActive(t *testing.T) {
+	g := mustBuild(t, []*item.Item{
+		{ID: "A", Phase: "1", Status: item.StatusDone},
+		{ID: "B", Phase: "1", Status: item.StatusInProgress},
+		{ID: "C", Phase: "2", Status: item.StatusDraft},
+	})
+	if got := g.ActivePhase(); got != "1" {
+		t.Errorf("ActivePhase() = %q, want 1", got)
+	}
+}
+
+func TestActivePhase_AllDone(t *testing.T) {
+	g := mustBuild(t, []*item.Item{
+		{ID: "A", Phase: "1", Status: item.StatusDone},
+		{ID: "B", Phase: "2", Status: item.StatusDone},
+	})
+	if got := g.ActivePhase(); got != "" {
+		t.Errorf("ActivePhase() = %q, want empty", got)
+	}
+}
+
+// --- Phase-based sorting ---
+
+func TestReady_PhaseSorting(t *testing.T) {
+	// A is in the active phase, B is in a later phase, C has no phase.
+	// All same priority, no deps.
+	g := mustBuild(t, []*item.Item{
+		{ID: "A", Phase: "2", Priority: item.PriorityHigh, Status: item.StatusDraft},
+		{ID: "B", Phase: "1", Priority: item.PriorityHigh, Status: item.StatusDraft},
+		{ID: "C", Priority: item.PriorityHigh, Status: item.StatusDraft},
+	})
+	// Active phase = "1" (earliest incomplete)
+	ready := g.Ready()
+	if len(ready) != 3 {
+		t.Fatalf("expected 3 ready, got %d", len(ready))
+	}
+	// B (phase 1 = active) first, C (no phase = neutral) second, A (phase 2 = wrong) last
+	if ready[0].ID != "B" {
+		t.Errorf("ready[0] = %s, want B (active phase)", ready[0].ID)
+	}
+	if ready[1].ID != "C" {
+		t.Errorf("ready[1] = %s, want C (no phase)", ready[1].ID)
+	}
+	if ready[2].ID != "A" {
+		t.Errorf("ready[2] = %s, want A (wrong phase)", ready[2].ID)
+	}
+}
+
+func TestReady_PhaseCompletedAdvancesToNext(t *testing.T) {
+	g := mustBuild(t, []*item.Item{
+		{ID: "A", Phase: "1", Priority: item.PriorityHigh, Status: item.StatusDone},
+		{ID: "B", Phase: "2", Priority: item.PriorityHigh, Status: item.StatusDraft},
+		{ID: "C", Phase: "3", Priority: item.PriorityHigh, Status: item.StatusDraft},
+	})
+	ready := g.Ready()
+	// Active phase = "2", so B first, C last
+	if len(ready) != 2 {
+		t.Fatalf("expected 2 ready, got %d", len(ready))
+	}
+	if ready[0].ID != "B" {
+		t.Errorf("ready[0] = %s, want B (active phase 2)", ready[0].ID)
+	}
+	if ready[1].ID != "C" {
+		t.Errorf("ready[1] = %s, want C (wrong phase 3)", ready[1].ID)
+	}
+}
+
+// --- Critical path depth sorting ---
+
+func TestReady_CriticalPathDepth(t *testing.T) {
+	// A has a 3-deep chain below it, B has a 1-deep chain. Same priority.
+	g := mustBuild(t, []*item.Item{
+		{ID: "A", Priority: item.PriorityHigh, Status: item.StatusDraft},
+		{ID: "B", Priority: item.PriorityHigh, Status: item.StatusDraft},
+		{ID: "C", Status: item.StatusDraft, Dependencies: []string{"A"}},
+		{ID: "D", Status: item.StatusDraft, Dependencies: []string{"C"}},
+		{ID: "E", Status: item.StatusDraft, Dependencies: []string{"D"}},
+		{ID: "F", Status: item.StatusDraft, Dependencies: []string{"B"}},
+	})
+	ready := g.Ready()
+	if len(ready) != 2 {
+		t.Fatalf("expected 2 ready, got %d", len(ready))
+	}
+	// A has depth 3 (A→C→D→E), B has depth 1 (B→F) → A first
+	if ready[0].ID != "A" {
+		t.Errorf("ready[0] = %s, want A (deeper critical path)", ready[0].ID)
+	}
+	if ready[1].ID != "B" {
+		t.Errorf("ready[1] = %s, want B (shallower critical path)", ready[1].ID)
+	}
+}
+
+func TestReady_CriticalPathIgnoresDoneItems(t *testing.T) {
+	// A has dependents C (done) and D (draft). B has dependent E (draft) and F (draft→E).
+	g := mustBuild(t, []*item.Item{
+		{ID: "A", Priority: item.PriorityHigh, Status: item.StatusDraft},
+		{ID: "B", Priority: item.PriorityHigh, Status: item.StatusDraft},
+		{ID: "C", Status: item.StatusDone, Dependencies: []string{"A"}},
+		{ID: "D", Status: item.StatusDraft, Dependencies: []string{"A"}},
+		{ID: "E", Status: item.StatusDraft, Dependencies: []string{"B"}},
+		{ID: "F", Status: item.StatusDraft, Dependencies: []string{"E"}},
+	})
+	ready := g.Ready()
+	if len(ready) != 2 {
+		t.Fatalf("expected 2 ready, got %d", len(ready))
+	}
+	// A: depth 1 (only D is non-done). B: depth 2 (B→E→F). B first.
+	if ready[0].ID != "B" {
+		t.Errorf("ready[0] = %s, want B (deeper non-done chain)", ready[0].ID)
+	}
+	if ready[1].ID != "A" {
+		t.Errorf("ready[1] = %s, want A (shallower non-done chain)", ready[1].ID)
+	}
+}
+
+// --- Unblock impact sorting ---
+
+func TestReady_UnblockImpact(t *testing.T) {
+	// A and B have same priority, same critical depth.
+	// A unblocks 2 items immediately, B unblocks 0.
+	g := mustBuild(t, []*item.Item{
+		{ID: "A", Priority: item.PriorityHigh, Status: item.StatusDraft},
+		{ID: "B", Priority: item.PriorityHigh, Status: item.StatusDraft},
+		{ID: "C", Status: item.StatusDraft, Dependencies: []string{"A"}},
+		{ID: "D", Status: item.StatusDraft, Dependencies: []string{"A"}},
+		{ID: "E", Status: item.StatusDraft, Dependencies: []string{"B", "A"}},
+	})
+	ready := g.Ready()
+	if len(ready) != 2 {
+		t.Fatalf("expected 2 ready, got %d", len(ready))
+	}
+	// A: depth 1, unblocks C and D (E still blocked by B). B: depth 1, unblocks 0.
+	// A first by unblock impact.
+	if ready[0].ID != "A" {
+		t.Errorf("ready[0] = %s, want A (unblocks 2)", ready[0].ID)
+	}
+	if ready[1].ID != "B" {
+		t.Errorf("ready[1] = %s, want B (unblocks 0)", ready[1].ID)
+	}
+}
+
+// --- Priority still outranks structural metrics ---
+
+func TestReady_PriorityBeatsDepth(t *testing.T) {
+	// A is Low priority but has a deep chain. B is Critical with no chain.
+	// Priority should win.
+	g := mustBuild(t, []*item.Item{
+		{ID: "A", Priority: item.PriorityLow, Status: item.StatusDraft},
+		{ID: "B", Priority: item.PriorityCritical, Status: item.StatusDraft},
+		{ID: "C", Status: item.StatusDraft, Dependencies: []string{"A"}},
+		{ID: "D", Status: item.StatusDraft, Dependencies: []string{"C"}},
+	})
+	ready := g.Ready()
+	if len(ready) != 2 {
+		t.Fatalf("expected 2 ready, got %d", len(ready))
+	}
+	if ready[0].ID != "B" {
+		t.Errorf("ready[0] = %s, want B (Critical beats deeper Low)", ready[0].ID)
+	}
+}
+
+// --- Combined multi-factor ---
+
+func TestReady_CombinedPhaseAndPriority(t *testing.T) {
+	// B is Critical but wrong phase. A is High but active phase. Phase wins.
+	g := mustBuild(t, []*item.Item{
+		{ID: "A", Phase: "1", Priority: item.PriorityHigh, Status: item.StatusDraft},
+		{ID: "B", Phase: "2", Priority: item.PriorityCritical, Status: item.StatusDraft},
+	})
+	ready := g.Ready()
+	if len(ready) != 2 {
+		t.Fatalf("expected 2 ready, got %d", len(ready))
+	}
+	if ready[0].ID != "A" {
+		t.Errorf("ready[0] = %s, want A (active phase beats higher priority)", ready[0].ID)
 	}
 }
 
