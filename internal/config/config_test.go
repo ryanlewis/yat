@@ -368,6 +368,82 @@ func TestStatusGroups_AllValid(t *testing.T) {
 	}
 }
 
+func TestMergeFrom(t *testing.T) {
+	primary := config.Config{
+		Dir:          "/primary",
+		FieldAliases: map[string]string{"status": "current"},
+	}
+
+	secondary := config.Config{
+		Dir:      "/secondary",
+		ReadOnly: true,
+		Statuses: config.StatusGroups{
+			Done:    []string{"shipped"},
+			Active:  []string{"wip"},
+			Initial: []string{"new"},
+		},
+		Phases:       []string{"alpha", "beta"},
+		FieldAliases: map[string]string{"status": "condition", "priority": "urgency"},
+	}
+
+	primary.MergeFrom(&secondary)
+
+	if primary.Dir != "/primary" {
+		t.Errorf("Dir: expected /primary, got %s", primary.Dir)
+	}
+
+	if !primary.ReadOnly {
+		t.Error("ReadOnly: expected true via OR")
+	}
+
+	if !primary.Statuses.IsDone("shipped") {
+		t.Error("Statuses: expected secondary statuses")
+	}
+
+	if len(primary.Phases) != 2 || primary.Phases[0] != "alpha" {
+		t.Errorf("Phases: expected secondary phases, got %v", primary.Phases)
+	}
+
+	if primary.FieldAliases["status"] != "current" {
+		t.Errorf("FieldAliases: expected primary status alias, got %q", primary.FieldAliases["status"])
+	}
+
+	if primary.FieldAliases["priority"] != "urgency" {
+		t.Errorf("FieldAliases: expected secondary priority alias, got %q", primary.FieldAliases["priority"])
+	}
+}
+
+func TestMergeFrom_NilAliases(t *testing.T) {
+	primary := config.Config{}
+	secondary := config.Config{
+		FieldAliases: map[string]string{"status": "current"},
+	}
+
+	primary.MergeFrom(&secondary)
+
+	if primary.FieldAliases["status"] != "current" {
+		t.Errorf("expected alias from secondary, got %q", primary.FieldAliases["status"])
+	}
+}
+
+func TestMergeFrom_EmptySecondary(t *testing.T) {
+	primary := config.Config{
+		Dir:    "/primary",
+		Phases: []string{"v1"},
+	}
+
+	empty := config.Config{}
+	primary.MergeFrom(&empty)
+
+	if primary.Dir != "/primary" {
+		t.Errorf("Dir: expected /primary, got %s", primary.Dir)
+	}
+
+	if len(primary.Phases) != 1 {
+		t.Errorf("Phases should be unchanged, got %v", primary.Phases)
+	}
+}
+
 func TestLoadWithFallback_UsesItemsDir(t *testing.T) {
 	t.Chdir(t.TempDir()) // cwd has no config
 
@@ -391,11 +467,120 @@ func TestLoadWithFallback_UsesItemsDir(t *testing.T) {
 	}
 }
 
-func TestLoadWithFallback_CwdTakesPrecedence(t *testing.T) {
+func TestLoadWithFallback_CwdDirTakesPrecedence(t *testing.T) {
 	cwdDir := t.TempDir()
 	t.Chdir(cwdDir)
 
-	cwdContent := []byte("readonly: false\n")
+	cwdContent := []byte("dir: /from-cwd\n")
+	if err := os.WriteFile(filepath.Join(cwdDir, ".yat.yaml"), cwdContent, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	itemsDir := t.TempDir()
+	itemsContent := []byte("dir: /from-items\n")
+	if err := os.WriteFile(filepath.Join(itemsDir, ".yat.yaml"), itemsContent, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := config.LoadWithFallback(itemsDir)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if cfg.Dir != "/from-cwd" {
+		t.Errorf("expected cwd dir to win, got %q", cfg.Dir)
+	}
+}
+
+func TestLoadWithFallback_MergesConfigs(t *testing.T) {
+	cwdDir := t.TempDir()
+	t.Chdir(cwdDir)
+
+	cwdContent := []byte("dir: /some/items\nfield_aliases:\n  status: state\n")
+	if err := os.WriteFile(filepath.Join(cwdDir, ".yat.yaml"), cwdContent, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	itemsDir := t.TempDir()
+	itemsContent := []byte("readonly: true\nphases:\n  - planning\n  - building\nfield_aliases:\n  status: condition\n  priority: urgency\n")
+	if err := os.WriteFile(filepath.Join(itemsDir, ".yat.yaml"), itemsContent, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := config.LoadWithFallback(itemsDir)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Dir from CWD config.
+	if cfg.Dir != "/some/items" {
+		t.Errorf("expected dir from cwd, got %q", cfg.Dir)
+	}
+
+	// ReadOnly OR: items-dir sets true.
+	if !cfg.ReadOnly {
+		t.Error("expected readonly=true via OR semantics")
+	}
+
+	// Phases from items-dir (CWD has none).
+	if len(cfg.Phases) != 2 || cfg.Phases[0] != "planning" {
+		t.Errorf("expected phases from items-dir, got %v", cfg.Phases)
+	}
+
+	// FieldAliases: CWD's status→state wins, items-dir's priority→urgency fills gap.
+	if cfg.FieldAliases["status"] != "state" {
+		t.Errorf("expected cwd alias for status, got %q", cfg.FieldAliases["status"])
+	}
+
+	if cfg.FieldAliases["priority"] != "urgency" {
+		t.Errorf("expected items-dir alias for priority, got %q", cfg.FieldAliases["priority"])
+	}
+}
+
+func TestLoadWithFallback_SecondaryFromPrimaryDir(t *testing.T) {
+	// CWD config points dir at a subdirectory; config exists in its parent.
+	// No --dir flag (fallbackDir=""), so secondary search uses primary.Dir.
+	root := t.TempDir()
+	itemsDir := filepath.Join(root, "spec")
+	if err := os.MkdirAll(itemsDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	// Config near items: custom statuses.
+	rootContent := []byte("statuses:\n  done: [shipped]\n  active: [wip]\n  initial: [new]\n")
+	if err := os.WriteFile(filepath.Join(root, ".yat.yaml"), rootContent, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// CWD config: just dir.
+	cwdDir := t.TempDir()
+	t.Chdir(cwdDir)
+
+	cwdContent := []byte("dir: " + itemsDir + "\n")
+	if err := os.WriteFile(filepath.Join(cwdDir, ".yat.yaml"), cwdContent, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := config.LoadWithFallback("")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if cfg.Dir != itemsDir {
+		t.Errorf("expected dir=%s, got %s", itemsDir, cfg.Dir)
+	}
+
+	if !cfg.Statuses.IsDone("shipped") {
+		t.Error("expected statuses from items-dir config to be merged")
+	}
+}
+
+func TestLoadWithFallback_ReadOnlyOR(t *testing.T) {
+	cwdDir := t.TempDir()
+	t.Chdir(cwdDir)
+
+	// CWD config omits readonly (defaults to false).
+	cwdContent := []byte("dir: /items\n")
 	if err := os.WriteFile(filepath.Join(cwdDir, ".yat.yaml"), cwdContent, 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -411,8 +596,8 @@ func TestLoadWithFallback_CwdTakesPrecedence(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if cfg.ReadOnly {
-		t.Error("expected cwd config (readonly=false) to take precedence over items-dir config")
+	if !cfg.ReadOnly {
+		t.Error("expected readonly=true when items-dir config sets it")
 	}
 }
 

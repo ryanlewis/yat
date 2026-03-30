@@ -86,33 +86,49 @@ func Load() (Config, error) {
 	return LoadWithFallback("")
 }
 
-// LoadWithFallback searches for config from the current directory first.
-// If no config is found and fallbackDir is non-empty, it also searches
-// from fallbackDir upward. This allows config files placed alongside a
-// remote items directory to be discovered when running yat from elsewhere.
+// LoadWithFallback searches for config from the current directory first,
+// then merges in config found near the items directory. This allows a
+// project config (setting dir) and a spec-level config (setting statuses,
+// phases, etc.) to coexist. The CWD config takes precedence for fields
+// that both configs set. If fallbackDir is non-empty it is used as the
+// secondary search location; otherwise the primary config's Dir field is
+// used.
 func LoadWithFallback(fallbackDir string) (Config, error) {
 	dir, err := os.Getwd()
 	if err != nil {
 		return Config{}, err
 	}
 
-	cfg, found, err := loadWalk(dir)
+	primary, _, err := loadWalk(dir)
 	if err != nil {
 		return Config{}, err
 	}
 
-	if !found && fallbackDir != "" {
-		cfg, found, err = loadWalk(fallbackDir)
+	// Determine where to search for a secondary config.
+	// CLI --dir flag takes precedence; otherwise use dir from primary config.
+	secondaryDir := fallbackDir
+	if secondaryDir == "" {
+		secondaryDir = primary.Dir
+	}
+
+	if secondaryDir != "" {
+		secondary, secondaryFound, err := loadWalk(secondaryDir)
 		if err != nil {
 			return Config{}, err
 		}
+
+		if secondaryFound {
+			primary.MergeFrom(&secondary)
+		}
 	}
 
-	if !found {
-		cfg.Defaults()
+	primary.Defaults()
+
+	if err := primary.Validate(); err != nil {
+		return Config{}, err
 	}
 
-	return cfg, nil
+	return primary, nil
 }
 
 // loadWalk searches for a config file starting from startDir and walking up
@@ -165,11 +181,6 @@ func tryLoadFromDir(dir string) (Config, bool, error) {
 		}
 
 		cfg.Dir = expanded
-		cfg.Defaults()
-
-		if err := cfg.Validate(); err != nil {
-			return Config{}, false, err
-		}
 
 		return cfg, true, nil
 	}
@@ -228,6 +239,37 @@ func (c *Config) Validate() error {
 	}
 
 	return nil
+}
+
+// MergeFrom fills zero-valued fields in c from other.
+// ReadOnly uses OR semantics: true if either config sets it.
+// FieldAliases are merged per-key with c taking precedence.
+func (c *Config) MergeFrom(other *Config) {
+	if c.Dir == "" {
+		c.Dir = other.Dir
+	}
+
+	c.ReadOnly = c.ReadOnly || other.ReadOnly
+
+	if c.Statuses.IsEmpty() {
+		c.Statuses = other.Statuses
+	}
+
+	if c.Phases == nil {
+		c.Phases = other.Phases
+	}
+
+	if len(other.FieldAliases) > 0 {
+		if c.FieldAliases == nil {
+			c.FieldAliases = make(map[string]string)
+		}
+
+		for k, v := range other.FieldAliases {
+			if _, exists := c.FieldAliases[k]; !exists {
+				c.FieldAliases[k] = v
+			}
+		}
+	}
 }
 
 func ExpandTilde(path string) (string, error) {
