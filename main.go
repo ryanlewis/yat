@@ -23,6 +23,7 @@ type cli struct {
 	List     cmd.ListCmd     `cmd:"" help:"List all items grouped by status."`
 	Status   cmd.StatusCmd   `cmd:"" help:"Show an overview of all items."`
 	Graph    cmd.GraphCmd    `cmd:"" help:"Show the dependency graph."`
+	Tree     cmd.TreeCmd     `cmd:"" help:"Show the dependency tree."`
 	Agents   cmd.AgentsCmd   `cmd:"" help:"Print a usage guide for AI agents."`
 }
 
