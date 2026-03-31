@@ -96,6 +96,7 @@ type Item struct {
 	Status       Status   `yaml:"status"       json:"status"`
 	Phase        string   `yaml:"phase"        json:"phase"`
 
-	FilePath string `yaml:"-" json:"file_path"`
-	Body     string `yaml:"-" json:"-"`
+	FilePath string                 `yaml:"-"       json:"file_path"`
+	Body     string                 `yaml:"-"       json:"-"`
+	Extra    map[string]interface{} `yaml:",inline" json:"extra,omitempty"`
 }

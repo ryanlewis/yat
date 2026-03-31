@@ -8,16 +8,17 @@ type ShowCmd struct {
 }
 
 type showJSON struct {
-	ID           string   `json:"id"`
-	Title        string   `json:"title"`
-	Type         string   `json:"type"`
-	Priority     string   `json:"priority"`
-	Points       int      `json:"points"`
-	Dependencies []string `json:"dependencies"`
-	Status       string   `json:"status"`
-	Phase        string   `json:"phase"`
-	FilePath     string   `json:"file_path"`
-	Body         string   `json:"body"`
+	ID           string                 `json:"id"`
+	Title        string                 `json:"title"`
+	Type         string                 `json:"type"`
+	Priority     string                 `json:"priority"`
+	Points       int                    `json:"points"`
+	Dependencies []string               `json:"dependencies"`
+	Status       string                 `json:"status"`
+	Phase        string                 `json:"phase"`
+	FilePath     string                 `json:"file_path"`
+	Extra        map[string]interface{} `json:"extra,omitempty"`
+	Body         string                 `json:"body"`
 }
 
 // Run executes the show command.
@@ -43,6 +44,7 @@ func (s *ShowCmd) Run(rc *RunContext) error {
 			Status:       string(item.Status),
 			Phase:        item.Phase,
 			FilePath:     item.FilePath,
+			Extra:        item.Extra,
 			Body:         item.Body,
 		})
 	}
@@ -56,6 +58,10 @@ func (s *ShowCmd) Run(rc *RunContext) error {
 		item.Type, item.Points, item.Phase,
 		sty.Status(item.Status))
 
+	if len(item.Extra) > 0 {
+		fmt.Fprintf(rc.Stdout, "%s\n", formatExtra(item.Extra))
+	}
+
 	if len(item.Dependencies) > 0 {
 		rc.printf("%s", sty.Dim("Dependencies:"))
 
@@ -65,6 +71,8 @@ func (s *ShowCmd) Run(rc *RunContext) error {
 
 		rc.printf("\n")
 	}
+
+	fmt.Fprintf(rc.Stdout, "%s\n", sty.Dim("File: "+item.FilePath))
 
 	if item.Body != "" {
 		rc.printf("\n%s", sty.RenderBody(item.Body))

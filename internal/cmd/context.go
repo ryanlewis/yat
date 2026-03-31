@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"sort"
+	"strings"
 	"text/tabwriter"
 
 	"github.com/ryanlewis/yat/internal/config"
@@ -99,6 +101,21 @@ func (rc *RunContext) writeJSON(v any) error {
 	enc.SetIndent("", "  ")
 
 	return enc.Encode(v)
+}
+
+func formatExtra(extra map[string]interface{}) string {
+	keys := make([]string, 0, len(extra))
+	for k := range extra {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+
+	parts := make([]string, 0, len(keys))
+	for _, k := range keys {
+		parts = append(parts, fmt.Sprintf("%s: %v", k, extra[k]))
+	}
+
+	return strings.Join(parts, "  |  ")
 }
 
 func (rc *RunContext) newTabWriter() *tabwriter.Writer {

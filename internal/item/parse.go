@@ -72,6 +72,11 @@ func ParseWithOptions(data []byte, path string, opts ParseOptions) (*Item, error
 		return nil, fmt.Errorf("parsing frontmatter in %s: %w", path, err)
 	}
 
+	delete(item.Extra, "yat")
+	if len(item.Extra) == 0 {
+		item.Extra = nil
+	}
+
 	if item.ID == "" {
 		if looksLikeItem(&item) {
 			return nil, fmt.Errorf("%w: %s", ErrMissingID, path)

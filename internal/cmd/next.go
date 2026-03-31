@@ -6,13 +6,15 @@ import "fmt"
 type NextCmd struct{}
 
 type nextJSON struct {
-	ID       string `json:"id"`
-	Title    string `json:"title"`
-	Priority string `json:"priority"`
-	Type     string `json:"type"`
-	Points   int    `json:"points"`
-	Phase    string `json:"phase"`
-	Body     string `json:"body"`
+	ID       string                 `json:"id"`
+	Title    string                 `json:"title"`
+	Priority string                 `json:"priority"`
+	Type     string                 `json:"type"`
+	Points   int                    `json:"points"`
+	Phase    string                 `json:"phase"`
+	FilePath string                 `json:"file_path"`
+	Extra    map[string]interface{} `json:"extra,omitempty"`
+	Body     string                 `json:"body"`
 }
 
 // Run executes the next command.
@@ -39,6 +41,8 @@ func (n *NextCmd) Run(rc *RunContext) error {
 			Type:     item.Type,
 			Points:   item.Points,
 			Phase:    item.Phase,
+			FilePath: item.FilePath,
+			Extra:    item.Extra,
 			Body:     item.Body,
 		})
 	}
@@ -50,6 +54,12 @@ func (n *NextCmd) Run(rc *RunContext) error {
 	fmt.Fprintf(rc.Stdout, "%s  |  Type: %s  |  Points: %d  |  Phase: %s\n",
 		s.Dim("Priority: ")+s.Priority(item.Priority),
 		item.Type, item.Points, item.Phase)
+
+	if len(item.Extra) > 0 {
+		fmt.Fprintf(rc.Stdout, "%s\n", formatExtra(item.Extra))
+	}
+
+	fmt.Fprintf(rc.Stdout, "%s\n", s.Dim("File: "+item.FilePath))
 
 	if item.Body != "" {
 		rc.printf("\n%s", s.RenderBody(item.Body))

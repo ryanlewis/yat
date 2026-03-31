@@ -325,3 +325,31 @@ func TestParse_FrontmatterTitleTakesPrecedence(t *testing.T) {
 		t.Errorf("Title = %q, want Explicit", item.Title)
 	}
 }
+
+func TestParse_ExtraFields(t *testing.T) {
+	data := []byte("---\nid: TK-001\nstatus: todo\njira: PROJ-123\nteam: backend\n---\nBody\n")
+	item, err := Parse(data, "test.md")
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	if item.Extra == nil {
+		t.Fatal("Extra is nil, want map with jira and team")
+	}
+	if item.Extra["jira"] != "PROJ-123" {
+		t.Errorf("Extra[jira] = %v, want PROJ-123", item.Extra["jira"])
+	}
+	if item.Extra["team"] != "backend" {
+		t.Errorf("Extra[team] = %v, want backend", item.Extra["team"])
+	}
+}
+
+func TestParse_NoExtraFieldsWhenNone(t *testing.T) {
+	data := []byte("---\nid: TK-001\nstatus: todo\n---\nBody\n")
+	item, err := Parse(data, "test.md")
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	if item.Extra != nil {
+		t.Errorf("Extra = %v, want nil", item.Extra)
+	}
+}
