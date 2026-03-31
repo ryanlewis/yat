@@ -53,12 +53,20 @@ func (r *ReadyCmd) Run(rc *RunContext) error {
 
 	rc.printf("%s", s.GroupHeader("ready"))
 
-	w := rc.newTabWriter()
-
-	for _, item := range items {
-		fmt.Fprintf(w, "  %s\t%s\t%s\t%s\n",
-			item.ID, s.Priority(item.Priority), item.Type, item.Title)
+	var maxID, maxPri, maxType int
+	for _, it := range items {
+		maxID = max(maxID, len(it.ID))
+		maxPri = max(maxPri, len(string(it.Priority)))
+		maxType = max(maxType, len(it.Type))
 	}
 
-	return w.Flush()
+	for _, it := range items {
+		fmt.Fprintf(rc.Stdout, "  %-*s  %s  %-*s  %s\n",
+			maxID, it.ID,
+			padRight(s.Priority(it.Priority), len(string(it.Priority)), maxPri),
+			maxType, it.Type,
+			it.Title)
+	}
+
+	return nil
 }

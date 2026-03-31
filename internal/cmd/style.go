@@ -140,6 +140,17 @@ func (s *Styles) RenderBody(body string) string {
 	return rendered
 }
 
+// padRight pads a styled string (which may contain ANSI codes) to a target
+// visible width by appending spaces. visibleLen is the display width of s
+// excluding any escape sequences.
+func padRight(s string, visibleLen, targetWidth int) string {
+	if pad := targetWidth - visibleLen; pad > 0 {
+		return s + strings.Repeat(" ", pad)
+	}
+
+	return s
+}
+
 func isTermWriter(w interface{}) bool {
 	f, ok := w.(*os.File)
 	if !ok {

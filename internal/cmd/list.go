@@ -148,21 +148,31 @@ func (l *ListCmd) runText(rc *RunContext, groups []itemGroup) error {
 
 		rc.printf("%s", s.GroupHeader(g.label))
 
-		w := rc.newTabWriter()
-
+		var maxID, maxPri, maxType, maxTitle int
 		for _, gi := range g.items {
+			maxID = max(maxID, len(gi.item.ID))
+			maxPri = max(maxPri, len(string(gi.item.Priority)))
+			maxType = max(maxType, len(gi.item.Type))
 			if len(gi.waitingOn) > 0 {
-				fmt.Fprintf(w, "  %s\t%s\t%s\t%s\t%s %s\n",
-					gi.item.ID, s.Priority(gi.item.Priority), gi.item.Type, gi.item.Title,
-					s.Dim("waiting on:"), strings.Join(gi.waitingOn, ", "))
-			} else {
-				fmt.Fprintf(w, "  %s\t%s\t%s\t%s\n",
-					gi.item.ID, s.Priority(gi.item.Priority), gi.item.Type, gi.item.Title)
+				maxTitle = max(maxTitle, len(gi.item.Title))
 			}
 		}
 
-		if err := w.Flush(); err != nil {
-			return err
+		for _, gi := range g.items {
+			if len(gi.waitingOn) > 0 {
+				fmt.Fprintf(rc.Stdout, "  %-*s  %s  %-*s  %-*s  %s %s\n",
+					maxID, gi.item.ID,
+					padRight(s.Priority(gi.item.Priority), len(string(gi.item.Priority)), maxPri),
+					maxType, gi.item.Type,
+					maxTitle, gi.item.Title,
+					s.Dim("waiting on:"), strings.Join(gi.waitingOn, ", "))
+			} else {
+				fmt.Fprintf(rc.Stdout, "  %-*s  %s  %-*s  %s\n",
+					maxID, gi.item.ID,
+					padRight(s.Priority(gi.item.Priority), len(string(gi.item.Priority)), maxPri),
+					maxType, gi.item.Type,
+					gi.item.Title)
+			}
 		}
 	}
 
