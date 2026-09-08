@@ -5,6 +5,12 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  schedule:
+    # Weekly govulncheck run so new advisories surface without waiting for a push.
+    - cron: "17 6 * * 1"
+  # Cron triggers are auto-disabled after 60 days of repo inactivity; this
+  # keeps a manual route to the same check.
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -29,3 +35,22 @@ jobs:
         with:
           go-version-file: go.mod
       - run: make test
+
+      # Renovate runs gomodTidy on Go bumps; this proves the result.
+      # verify runs first so it checks the committed go.sum, not one tidy rewrote.
+      - name: Verify modules
+        run: |
+          go mod verify
+          go mod tidy
+          git diff --exit-code go.mod go.sum
+
+      # Exit-code gate: a reachable vulnerability fails this job. Complements
+      # Renovate's OSV feed, which only covers published advisories against a
+      # module version — this also covers the standard library, whose version
+      # here is the toolchain directive in go.mod: setup-go installs that, and
+      # Renovate bumps it (it does not bump the go directive).
+      # Version pinned (no @latest) so a run is reproducible and a bad upstream
+      # release can't execute here unreviewed; Renovate bumps it via the
+      # customManager in renovate.json.
+      - name: govulncheck
+        run: go run golang.org/x/vuln/cmd/govulncheck@v1.7.0 ./...
