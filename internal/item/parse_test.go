@@ -309,6 +309,8 @@ func TestExtractHeading(t *testing.T) {
 		{"code under list item is not a heading", "- step one\n\n      # Code\n# Title", "Title"},
 		{"code after text is not a heading", "Example:\n\n    # not a heading\n\n# Title", "Title"},
 		{"list ends on dedent", "- step one\n\nText\n\n    # Code\n# Title", "Title"},
+		{"thematic break is not a list item", "- - -\n\n    # Code\n# Title", "Title"},
+		{"tab after list marker", "-\tstep\n\n    # Real Title", "Real Title"},
 		{"fence under list item", "- step\n\n  ```\n  # Hidden\n  ```\n# Title", "Title"},
 	}
 

@@ -176,8 +176,8 @@ func extractHeading(body []byte) string {
 			continue
 		}
 
-		if n := listMarkerWidth(trimmed); n > 0 {
-			lists = append(lists, indentWidth(line)+n)
+		if col := listContentColumn(trimmed, indentWidth(line)); col > 0 {
+			lists = append(lists, col)
 			continue
 		}
 
@@ -255,16 +255,16 @@ func listMarker(line []byte) int {
 	return 0
 }
 
-// listMarkerWidth returns the columns from the start of a list item's marker
-// to its content, or 0 when line does not start a list item.
-func listMarkerWidth(line []byte) int {
+// listContentColumn returns the column a list item's content starts at, for
+// a line trimmed of the start indent columns, or 0 when it does not start one.
+func listContentColumn(line []byte, start int) int {
 	n := listMarker(line)
-	if n == 0 {
+	if n == 0 || isThematicBreak(line) {
 		return 0
 	}
 
 	if n == len(line) {
-		return n + 1 // an empty item: its content starts one column on
+		return start + n + 1 // an empty item: its content starts one column on
 	}
 
 	if line[n] != ' ' && line[n] != '\t' {
@@ -273,11 +273,43 @@ func listMarkerWidth(line []byte) int {
 
 	// One to four columns of space follow the marker; with five or more, the
 	// content starts after one and the rest is indented code.
-	if gap := indentWidth(line[n:]); gap <= codeIndent {
-		return n + gap
+	col := start + n
+	for _, c := range line[n:] {
+		switch c {
+		case ' ':
+			col++
+		case '\t':
+			col += codeIndent - col%codeIndent
+		default:
+			if gap := col - start - n; gap > codeIndent {
+				return start + n + 1
+			}
+
+			return col
+		}
 	}
 
-	return n + 1
+	return col
+}
+
+// minBreakLen is the fewest marks that make a thematic break.
+const minBreakLen = 3
+
+// isThematicBreak reports whether line is a thematic break such as "- - -" or
+// "***", which looks like a list item but is not one.
+func isThematicBreak(line []byte) bool {
+	n := 0
+
+	for _, c := range line {
+		switch {
+		case c == line[0]:
+			n++
+		case c != ' ' && c != '\t':
+			return false
+		}
+	}
+
+	return (line[0] == '-' || line[0] == '*' || line[0] == '_') && n >= minBreakLen
 }
 
 // codeIndent is the indent, in columns, at which a line becomes indented code.
