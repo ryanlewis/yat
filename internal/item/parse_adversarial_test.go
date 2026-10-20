@@ -838,3 +838,43 @@ func TestParse_ArbitraryPhaseAccepted(t *testing.T) {
 		t.Errorf("Phase = %q, want not-a-number", item.Phase)
 	}
 }
+
+func TestParse_UTF8BOM(t *testing.T) {
+	it, err := Parse([]byte("\xef\xbb\xbf---\nid: BOM-1\nstatus: todo\n---\nBody.\n"), "test.md")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if it == nil {
+		t.Fatal("expected item, got nil: a BOM before the frontmatter hid the file")
+	}
+	if it.ID != "BOM-1" || it.Body != "Body.\n" {
+		t.Errorf("got ID=%q Body=%q", it.ID, it.Body)
+	}
+}
+
+func TestParseWithOptions_AliasesKeepScalarText(t *testing.T) {
+	// With aliases set, frontmatter is re-marshaled before decoding. Values must
+	// keep their source text: 007 is not 7, and 1.10 is not 1.1.
+	input := "---\nid: 007\nstage: todo\nphase: 1.10\ndependencies: [0x1F]\n---\n"
+	opts := ParseOptions{Aliases: map[string]string{"stage": "status"}}
+
+	it, err := ParseWithOptions([]byte(input), "test.md", opts)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if it == nil {
+		t.Fatal("expected item")
+	}
+	if it.ID != "007" {
+		t.Errorf("ID = %q, want %q", it.ID, "007")
+	}
+	if it.Phase != "1.10" {
+		t.Errorf("Phase = %q, want %q", it.Phase, "1.10")
+	}
+	if len(it.Dependencies) != 1 || it.Dependencies[0] != "0x1F" {
+		t.Errorf("Dependencies = %q, want [0x1F]", it.Dependencies)
+	}
+	if it.Status != StatusTodo {
+		t.Errorf("Status = %q, want todo", it.Status)
+	}
+}
