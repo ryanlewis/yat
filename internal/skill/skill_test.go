@@ -45,7 +45,7 @@ func TestAgentRenderFrontmatterAndCommands(t *testing.T) {
 				t.Fatalf("Lookup(%s): %v", name, err)
 			}
 			files := a.Files()
-			raw, ok := files["SKILL.md"]
+			raw, ok := files[skillFileName]
 			if !ok {
 				t.Fatalf("%s files missing SKILL.md: %v", name, keys(files))
 			}
@@ -273,7 +273,7 @@ func TestInstallExistsUninstall(t *testing.T) {
 				t.Error("after Install, Exists should be true")
 			}
 			got := InstalledFiles(a, dir)
-			if len(got) != 1 || got[0] != "SKILL.md" {
+			if len(got) != 1 || got[0] != skillFileName {
 				t.Errorf("InstalledFiles = %v, want [SKILL.md]", got)
 			}
 
@@ -339,5 +339,32 @@ func TestSectionDemotesHeadingsOutsideFences(t *testing.T) {
 	}
 	if !strings.Contains(out, "\n# ... do the work ...\n") {
 		t.Error("Section demoted a comment inside a code fence")
+	}
+}
+
+// TestForeignSkillFileLeftAlone guards against a --path pointing at another
+// skill's directory: uninstall must not delete its SKILL.md (or the directory),
+// and the file must not count as installed.
+func TestForeignSkillFileLeftAlone(t *testing.T) {
+	a, _ := Lookup(claudeName)
+	dir := t.TempDir()
+	path := filepath.Join(dir, skillFileName)
+	foreign := "---\nname: other\n---\nnot yat\n"
+	if err := os.WriteFile(path, []byte(foreign), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	if Exists(a, dir) {
+		t.Error("a foreign SKILL.md should not count as installed")
+	}
+	if got := ForeignFiles(a, dir); len(got) != 1 || got[0] != skillFileName {
+		t.Errorf("ForeignFiles = %v, want [SKILL.md]", got)
+	}
+	if err := Uninstall(a, dir); err != nil {
+		t.Fatalf("Uninstall: %v", err)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil || string(data) != foreign {
+		t.Errorf("foreign SKILL.md changed or removed: %q, %v", data, err)
 	}
 }

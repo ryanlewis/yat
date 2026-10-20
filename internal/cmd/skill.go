@@ -77,6 +77,11 @@ func (c *SkillInstallCmd) Run(env *SkillEnv) error {
 		return err
 	}
 
+	if foreign := skill.ForeignFiles(agent, dir); len(foreign) > 0 {
+		return fmt.Errorf("%s in %s was not written by yat; refusing to overwrite it",
+			strings.Join(foreign, ", "), dir)
+	}
+
 	exists := skill.Exists(agent, dir)
 	if exists && !c.Yes {
 		if !env.canPrompt() {
