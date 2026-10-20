@@ -111,3 +111,11 @@ func TestFormatTypeCounts_CleanedTypesMerge(t *testing.T) {
 		t.Errorf("got %q", got)
 	}
 }
+
+func TestFormatTypeCounts_CustomOrder(t *testing.T) {
+	got := formatTypeCounts(map[string]int{"Epic": 1, "Bug": 1, "Chore": 3, "Task": 9})
+	want := []string{"9 tasks", "3 chores", "1 bugs", "1 epics"}
+	if strings.Join(got, "|") != strings.Join(want, "|") {
+		t.Errorf("got %q, want %q", got, want)
+	}
+}

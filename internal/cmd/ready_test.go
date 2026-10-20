@@ -99,3 +99,22 @@ func TestReadyCmd_Empty(t *testing.T) {
 		t.Errorf("expected empty message, got:\n%s", buf.String())
 	}
 }
+
+func TestReadyCmd_TypeColumnOneLine(t *testing.T) {
+	items := []*item.Item{
+		{ID: "A-1", Title: "One", Type: "Ta\nsk\x1b[31m", Priority: item.PriorityHigh, Status: item.StatusTodo},
+		{ID: "A-2", Title: "Two", Type: "Spike", Priority: item.PriorityHigh, Status: item.StatusTodo},
+	}
+	rc, buf := newTestContext(t, items, false)
+
+	if err := (&ReadyCmd{}).Run(rc); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+
+	if strings.ContainsRune(buf.String(), '\x1b') {
+		t.Errorf("escape character leaked:\n%q", buf.String())
+	}
+	if !strings.Contains(buf.String(), "Ta sk[31m") {
+		t.Errorf("expected cleaned type, got:\n%q", buf.String())
+	}
+}

@@ -248,9 +248,22 @@ func formatTypeCounts(byType map[string]int) []string {
 		}
 	}
 
-	// Include any types not in the standard order
-	for t, c := range cleaned {
-		parts = append(parts, fmt.Sprintf("%d %s", c, pluralizeType(t)))
+	// Include any types not in the standard order, most items first, then by name
+	extra := make([]string, 0, len(cleaned))
+	for t := range cleaned {
+		extra = append(extra, t)
+	}
+
+	sort.Slice(extra, func(a, b int) bool {
+		if cleaned[extra[a]] != cleaned[extra[b]] {
+			return cleaned[extra[a]] > cleaned[extra[b]]
+		}
+
+		return extra[a] < extra[b]
+	})
+
+	for _, t := range extra {
+		parts = append(parts, fmt.Sprintf("%d %s", cleaned[t], pluralizeType(t)))
 	}
 
 	return parts
