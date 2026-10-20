@@ -364,3 +364,86 @@ func TestParse_NoExtraFieldsWhenNone(t *testing.T) {
 		t.Errorf("Extra = %v, want nil", item.Extra)
 	}
 }
+
+func TestParseWithOptions_StatusKey(t *testing.T) {
+	chain := map[string]string{"state": "status", "status": "priority"} // status: state, priority: status
+
+	tests := []struct {
+		name       string
+		fm         string
+		aliases    map[string]string
+		wantKey    string
+		wantStatus Status
+	}{
+		{name: "plain", fm: "id: A\nstatus: done\n", wantKey: "status", wantStatus: StatusDone},
+		{name: "double-quoted", fm: "id: A\n\"status\": done\n", wantKey: "status", wantStatus: StatusDone},
+		{name: "single-quoted", fm: "id: A\n'status': done\n", wantKey: "status", wantStatus: StatusDone},
+		{name: "spaced", fm: "id: A\nstatus : done\n", wantKey: "status", wantStatus: StatusDone},
+		{name: "empty value", fm: "id: A\nstatus:\n", wantKey: "status", wantStatus: StatusTodo},
+		{name: "absent", fm: "id: A\n", wantKey: "", wantStatus: StatusTodo},
+		{
+			name: "alias", fm: "id: A\n\"state\": done\n", aliases: map[string]string{"state": "status"},
+			wantKey: "state", wantStatus: StatusDone,
+		},
+		{
+			name: "file's own status wins", fm: "id: A\nstate: todo\nstatus: done\n",
+			aliases: map[string]string{"state": "status"}, wantKey: "status", wantStatus: StatusDone,
+		},
+		{name: "chain", fm: "id: A\nstate: done\nstatus: High\n", aliases: chain, wantKey: "state", wantStatus: StatusDone},
+		{
+			name: "status key is another field's", fm: "id: A\nstatus: High\n",
+			aliases: map[string]string{"status": "priority"}, wantKey: "", wantStatus: StatusTodo,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Run repeatedly: map order must not change the result.
+			for range 50 {
+				it, err := ParseWithOptions([]byte("---\n"+tt.fm+"---\n"), "a.md", ParseOptions{Aliases: tt.aliases})
+				if err != nil {
+					t.Fatalf("ParseWithOptions: %v", err)
+				}
+
+				if it.StatusKey != tt.wantKey || it.Status != tt.wantStatus {
+					t.Fatalf("StatusKey, Status = %q, %q, want %q, %q", it.StatusKey, it.Status, tt.wantKey, tt.wantStatus)
+				}
+			}
+		})
+	}
+}
+
+// With a chain of aliases, every key is renamed at once from the file's own
+// keys, whatever order the aliases map yields them in.
+func TestParseWithOptions_AliasChainIsDeterministic(t *testing.T) {
+	aliases := map[string]string{"state": "status", "status": "priority", "kind": "type", "sev": "points"}
+	data := []byte("---\nid: A\nstate: done\nstatus: High\nkind: Bug\nsev: 3\n---\n")
+
+	for range 100 {
+		it, err := ParseWithOptions(data, "a.md", ParseOptions{Aliases: aliases})
+		if err != nil {
+			t.Fatalf("ParseWithOptions: %v", err)
+		}
+
+		if it.Status != StatusDone || it.Priority != PriorityHigh || it.Type != "Bug" || it.Points != 3 {
+			t.Fatalf("got status %q priority %q type %q points %d", it.Status, it.Priority, it.Type, it.Points)
+		}
+	}
+}
+
+// Two fields aliased to each other's names swap.
+func TestParseWithOptions_AliasSwap(t *testing.T) {
+	aliases := map[string]string{"status": "phase", "phase": "status"}
+	data := []byte("---\nid: A\nstatus: build\nphase: done\n---\n")
+
+	for range 50 {
+		it, err := ParseWithOptions(data, "a.md", ParseOptions{Aliases: aliases})
+		if err != nil {
+			t.Fatalf("ParseWithOptions: %v", err)
+		}
+
+		if it.Status != StatusDone || it.Phase != "build" || it.StatusKey != "phase" {
+			t.Fatalf("got status %q phase %q key %q", it.Status, it.Phase, it.StatusKey)
+		}
+	}
+}

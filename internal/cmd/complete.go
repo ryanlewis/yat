@@ -45,6 +45,11 @@ func (c *CompleteCmd) Run(rc *RunContext) error {
 		return fmt.Errorf("item %s is already done", c.ID)
 	}
 
+	opts, err := rc.mutateOptions(it)
+	if err != nil {
+		return err
+	}
+
 	// Simulate completion in memory so UnblockedBy/StillBlocked see the new state
 	prevStatus := it.Status
 	it.Status = item.Status(rc.Statuses.DefaultDone())
@@ -53,7 +58,7 @@ func (c *CompleteCmd) Run(rc *RunContext) error {
 
 	target := item.Status(rc.Statuses.DefaultDone())
 
-	if err := item.SetStatusWithOptions(it.FilePath, target, rc.mutateOptions()); err != nil {
+	if err := item.SetStatusWithOptions(it.FilePath, target, opts); err != nil {
 		it.Status = prevStatus
 
 		return err

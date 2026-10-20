@@ -213,6 +213,8 @@ field_aliases:
 
 This tells yat to read the `state` field as `status` and `severity` as `priority`.
 
+An alias may be another field's name only if that field has an alias too (`status: state` with `priority: status` reads `status` as the priority). When a file has both a field's own key and its alias, the field's own key is read.
+
 ## JSON output
 
 All commands support `--json` for machine-readable output, useful for scripting or piping into other tools:

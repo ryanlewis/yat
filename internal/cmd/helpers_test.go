@@ -45,6 +45,8 @@ func newTestContext(t *testing.T, items []*item.Item, jsonMode bool) (*RunContex
 		t.Fatalf("Build: %v", err)
 	}
 
+	setStatusKey(items, "status")
+
 	var buf bytes.Buffer
 
 	return &RunContext{
@@ -55,6 +57,16 @@ func newTestContext(t *testing.T, items []*item.Item, jsonMode bool) (*RunContex
 		StatusField: "status",
 		Stdout:      &buf,
 	}, &buf
+}
+
+// setStatusKey gives hand-built items with a file the status key parse would
+// record for it.
+func setStatusKey(items []*item.Item, key string) {
+	for _, it := range items {
+		if it.FilePath != "" && it.StatusKey == "" {
+			it.StatusKey = key
+		}
+	}
 }
 
 func writeItemFile(t *testing.T, dir, filename, content string) string {
@@ -84,6 +96,8 @@ func newCustomTestContext(t *testing.T, items []*item.Item, jsonMode bool) (*Run
 	if err != nil {
 		t.Fatalf("Build: %v", err)
 	}
+
+	setStatusKey(items, "state")
 
 	var buf bytes.Buffer
 

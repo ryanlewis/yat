@@ -50,7 +50,12 @@ func (s *StartCmd) Run(rc *RunContext) error {
 
 	target := item.Status(rc.Statuses.DefaultActive())
 
-	if err := item.SetStatusWithOptions(it.FilePath, target, rc.mutateOptions()); err != nil {
+	opts, err := rc.mutateOptions(it)
+	if err != nil {
+		return err
+	}
+
+	if err := item.SetStatusWithOptions(it.FilePath, target, opts); err != nil {
 		return err
 	}
 
