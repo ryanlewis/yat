@@ -173,6 +173,21 @@ func TestE2E_NoArgs_NoProject_JSON(t *testing.T) {
 	}
 }
 
+func TestE2E_NoArgs_ConfiguredDirMissing(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, ".yat.yaml"), []byte("dir: items-typo\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	_, stderr, code := run(t, dir)
+	if code == 0 {
+		t.Fatal("expected non-zero exit when the configured items dir is missing")
+	}
+	if !strings.Contains(stderr, "items-typo") {
+		t.Errorf("expected error naming the dir, got: %s", stderr)
+	}
+}
+
 func TestE2E_NoArgs_Dashboard(t *testing.T) {
 	t.Parallel()
 	dir := setupProject(t)

@@ -73,18 +73,8 @@ func main() {
 	}
 
 	if _, statErr := os.Stat(dir); os.IsNotExist(statErr) {
-		if ctx.Command() == "dashboard" {
-			if err := cmd.WriteNoProject(os.Stdout, c.JSON, dir); err != nil {
-				fmt.Fprintf(os.Stderr, "error: %v\n", err)
-				os.Exit(1)
-			}
-			os.Exit(0)
-		}
-
-		fmt.Fprintf(os.Stderr, "error: items directory %q not found.\n", dir)
-		fmt.Fprintf(os.Stderr,
-			"Run 'yat init' to create a new project, or use --dir to specify a different directory.\n")
-		os.Exit(1)
+		// Only a defaulted directory means "not in a project"; a configured one that is missing is an error.
+		exitMissingDir(dir, ctx.Command() == "dashboard" && c.Dir == "" && cfg.Dir == "", c.JSON)
 	}
 
 	rc, err := cmd.NewRunContext(dir, c.JSON, &cfg)
@@ -97,4 +87,21 @@ func main() {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		os.Exit(1)
 	}
+}
+
+// exitMissingDir exits when the items directory does not exist: 0 with an
+// onboarding hint when onboard is set, 1 with an error otherwise.
+func exitMissingDir(dir string, onboard, jsonOutput bool) {
+	if onboard {
+		if err := cmd.WriteNoProject(os.Stdout, jsonOutput, dir); err != nil {
+			fmt.Fprintf(os.Stderr, "error: %v\n", err)
+			os.Exit(1)
+		}
+		os.Exit(0)
+	}
+
+	fmt.Fprintf(os.Stderr, "error: items directory %q not found.\n", dir)
+	fmt.Fprintf(os.Stderr,
+		"Run 'yat init' to create a new project, or use --dir to specify a different directory.\n")
+	os.Exit(1)
 }
