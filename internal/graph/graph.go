@@ -112,7 +112,7 @@ func Build(items []*item.Item, opts ...BuildOption) (*Graph, error) {
 
 	for _, i := range items {
 		g.items[i.ID] = i
-		g.forward[i.ID] = i.Dependencies
+		g.forward[i.ID] = uniqueDeps(i.Dependencies)
 	}
 
 	for id, deps := range g.forward {
@@ -130,6 +130,22 @@ func Build(items []*item.Item, opts ...BuildOption) (*Graph, error) {
 	}
 
 	return g, nil
+}
+
+// uniqueDeps returns deps with repeated IDs removed, keeping first-seen order,
+// so a dependency listed twice does not produce duplicate edges.
+func uniqueDeps(deps []string) []string {
+	seen := make(map[string]bool, len(deps))
+	out := make([]string, 0, len(deps))
+
+	for _, d := range deps {
+		if !seen[d] {
+			seen[d] = true
+			out = append(out, d)
+		}
+	}
+
+	return out
 }
 
 // detectCycles verifies all nodes appear in the topological sort.
