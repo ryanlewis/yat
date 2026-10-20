@@ -18,6 +18,8 @@ type startJSON struct {
 	Body  string `json:"body"`
 }
 
+func (*StartCmd) writesItems() {}
+
 // Run executes the start command.
 func (s *StartCmd) Run(rc *RunContext) error {
 	if rc.ReadOnly {

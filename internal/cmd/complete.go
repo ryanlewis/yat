@@ -30,6 +30,8 @@ type blockedRef struct {
 	WaitingOn []string `json:"waiting_on"`
 }
 
+func (*CompleteCmd) writesItems() {}
+
 // Run executes the complete command.
 func (c *CompleteCmd) Run(rc *RunContext) error {
 	if rc.ReadOnly {
