@@ -83,3 +83,4 @@ yat blocked --json | jq -r '.[] | "\(.id) waits on \(.waiting_on | join(", "))"'
 - `item "<id>" not found` — check the ID with `yat list --json`. IDs are matched exactly.
 - `cannot start <id>: blocked by <ids>` — finish the listed items first, or ask which to do.
 - `item <id> is already done` — nothing to do; move on with `yat next`.
+- `cannot update status in <file>: its value is not a one-line scalar; edit it by hand` — the status is written over several lines or uses a YAML anchor, so yat left the file untouched. Tell the user; do not rewrite the frontmatter yourself unless asked.
