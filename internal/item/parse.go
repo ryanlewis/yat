@@ -248,9 +248,24 @@ func remapAliases(fm []byte, aliases map[string]string, path string) (remapped [
 		return fm, "", nil
 	}
 
+	from = renameAliasKeys(doc.Content[0], aliases)
+	if len(aliases) == 0 {
+		return fm, from, nil
+	}
+
+	remapped, err = yaml.Marshal(&doc)
+	if err != nil {
+		return nil, "", fmt.Errorf("re-marshaling frontmatter in %s: %w", path, err)
+	}
+
+	return remapped, from, nil
+}
+
+// renameAliasKeys renames the alias keys in mapping, as remapAliases describes,
+// and returns the key the status is stored under ("" when there is none).
+func renameAliasKeys(mapping *yaml.Node, aliases map[string]string) (from string) {
 	isAlias := func(key string) bool { return aliases[key] != "" && aliases[key] != key }
 
-	mapping := doc.Content[0]
 	owned := make(map[string]bool, len(mapping.Content)/2) // fields the file has a key of their own for
 	targets := make(map[string]bool, len(aliases))         // fields some alias stands for
 
@@ -268,10 +283,6 @@ func remapAliases(fm []byte, aliases map[string]string, path string) (remapped [
 
 	if owned[statusField] {
 		from = statusField
-	}
-
-	if len(aliases) == 0 {
-		return fm, from, nil
 	}
 
 	content := make([]*yaml.Node, 0, len(mapping.Content))
@@ -300,12 +311,7 @@ func remapAliases(fm []byte, aliases map[string]string, path string) (remapped [
 
 	mapping.Content = content
 
-	remapped, err = yaml.Marshal(&doc)
-	if err != nil {
-		return nil, "", fmt.Errorf("re-marshaling frontmatter in %s: %w", path, err)
-	}
-
-	return remapped, from, nil
+	return from
 }
 
 // validateStatus checks and normalizes the status field on an item.
