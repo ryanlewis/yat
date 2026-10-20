@@ -16,31 +16,40 @@ var warnOut io.Writer = os.Stderr
 // LoadAll discovers and parses all .md files from the given directory (recursively).
 // Files without a valid id field in frontmatter are silently skipped. Files that
 // cannot be read, subdirectories that cannot be read, and files whose frontmatter
-// is not a YAML mapping are skipped with a warning on stderr.
-func LoadAll(dir string) ([]*Item, error) {
+// is not a YAML mapping are skipped with a warning on stderr; their paths are
+// returned as skipped, as an item they hold is missing from the result.
+func LoadAll(dir string) (items []*Item, skipped []string, err error) {
 	return LoadAllWithOptions(dir, ParseOptions{})
 }
 
 // LoadAllWithOptions is like LoadAll but accepts custom parsing options.
-func LoadAllWithOptions(dir string, opts ParseOptions) ([]*Item, error) {
+func LoadAllWithOptions(dir string, opts ParseOptions) (items []*Item, skipped []string, err error) {
 	return loadAll(dir, opts, warnSkip)
 }
 
 // ReloadWithOptions is like LoadAllWithOptions but warns about no file, for a
 // second load of a directory whose warnings were already printed.
-func ReloadWithOptions(dir string, opts ParseOptions) ([]*Item, error) {
+func ReloadWithOptions(dir string, opts ParseOptions) (items []*Item, skipped []string, err error) {
 	return loadAll(dir, opts, func(string, error) {})
 }
 
-func loadAll(dir string, opts ParseOptions, warnSkip func(path string, err error)) ([]*Item, error) {
-	var items []*Item
+func loadAll(dir string, opts ParseOptions, warn func(path string, err error)) ([]*Item, []string, error) {
+	var (
+		items   []*Item
+		skipped []string
+	)
+
+	skip := func(path string, err error) {
+		skipped = append(skipped, path)
+		warn(path, err)
+	}
 
 	err := filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			// A subdirectory that cannot be read is skipped like an unreadable
 			// file; the root itself still fails the load.
 			if path != dir && d != nil && d.IsDir() {
-				warnSkip(path, unwrapPathErr(err))
+				skip(path, unwrapPathErr(err))
 
 				return fs.SkipDir
 			}
@@ -56,7 +65,7 @@ func loadAll(dir string, opts ParseOptions, warnSkip func(path string, err error
 			return nil
 		}
 
-		item, err := loadFile(path, opts)
+		item, err := loadFile(path, opts, skip)
 		if err != nil {
 			return err
 		}
@@ -68,15 +77,15 @@ func loadAll(dir string, opts ParseOptions, warnSkip func(path string, err error
 		return nil
 	})
 	if err != nil {
-		return nil, fmt.Errorf("walking directory %s: %w", dir, err)
+		return nil, nil, fmt.Errorf("walking directory %s: %w", dir, err)
 	}
 
-	return items, nil
+	return items, skipped, nil
 }
 
 // loadFile parses one .md file for LoadAllWithOptions. It returns a nil item
 // and nil error for files that are skipped, with a warning where LoadAll says so.
-func loadFile(path string, opts ParseOptions) (*Item, error) {
+func loadFile(path string, opts ParseOptions, warnSkip func(path string, err error)) (*Item, error) {
 	item, err := ParseFileWithOptions(path, opts)
 	if err == nil {
 		return item, nil

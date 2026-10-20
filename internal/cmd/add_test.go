@@ -133,6 +133,75 @@ func TestAddCmd_NoPrefixToInfer(t *testing.T) {
 	}
 }
 
+func TestAddCmd_SkippedFiles(t *testing.T) {
+	tests := []struct {
+		name    string
+		skipped []string // broken symlinks in tasks/
+		a       AddCmd
+		wantID  string
+		wantErr string
+	}{
+		{
+			name:    "a skipped file names a higher id of the prefix",
+			skipped: []string{"TK-009-fix-login.md"},
+			a:       AddCmd{Title: "New", Type: "Task"},
+			wantID:  "TK-010",
+		},
+		{
+			name:    "a skipped file names no id of the prefix",
+			skipped: []string{"TK-009-fix-login.md", "notes.md"},
+			a:       AddCmd{Title: "New", Type: "Task"},
+			wantErr: "cannot pick an id: skipped as unreadable and may hold the next TK- id: <dir>/tasks/notes.md; " +
+				"make them readable or pass --id",
+		},
+		{
+			name:    "a skipped file names an id of another prefix",
+			skipped: []string{"BUG-009.md"},
+			a:       AddCmd{Title: "New", Prefix: "TK-"},
+			wantErr: "may hold the next TK- id: <dir>/tasks/BUG-009.md;",
+		},
+		{
+			name:    "--id still works",
+			skipped: []string{"notes.md"},
+			a:       AddCmd{Title: "New", Type: "Task", ID: "TK-100"},
+			wantID:  "TK-100",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dir := addTestDir(t)
+
+			for _, name := range tt.skipped {
+				if err := os.Symlink("nowhere.md", filepath.Join(dir, "tasks", name)); err != nil {
+					t.Fatal(err)
+				}
+			}
+
+			rc, buf := newAddContext(t, dir, defaultConfig(), true)
+			tt.a.stdin = strings.NewReader("")
+
+			err := tt.a.Run(rc)
+			if tt.wantErr != "" {
+				want := strings.ReplaceAll(tt.wantErr, "<dir>", dir)
+				if err == nil || !strings.Contains(err.Error(), want) {
+					t.Fatalf("err = %v, want it to contain %q", err, want)
+				}
+
+				return
+			}
+
+			if err != nil {
+				t.Fatalf("Run: %v", err)
+			}
+
+			if !strings.Contains(buf.String(), `"id": "`+tt.wantID+`"`) {
+				t.Errorf("output = %s, want id %s", buf, tt.wantID)
+			}
+		})
+	}
+}
+
 func TestAddCmd_ExplicitID(t *testing.T) {
 	dir := addTestDir(t)
 	rc, _ := newAddContext(t, dir, defaultConfig(), false)
@@ -355,7 +424,7 @@ func TestAddCmd_ConcurrentAddsTakeDistinctIDs(t *testing.T) {
 		}
 	}
 
-	items, err := item.LoadAll(dir)
+	items, _, err := item.LoadAll(dir)
 	if err != nil {
 		t.Fatal(err)
 	}

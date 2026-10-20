@@ -3,6 +3,7 @@ package cmd
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -36,6 +37,9 @@ type RunContext struct {
 
 	// parseOpts are the options items were loaded with.
 	parseOpts item.ParseOptions
+
+	// skipped lists the files and folders the load skipped as unreadable.
+	skipped []string
 }
 
 // statusKey is the canonical frontmatter key for an item's status.
@@ -58,7 +62,7 @@ func NewRunContext(dir string, jsonOutput bool, cfg *config.Config) (*RunContext
 		DefaultStatus: defaultStatus,
 	}
 
-	items, err := item.LoadAllWithOptions(dir, parseOpts)
+	items, skipped, err := item.LoadAllWithOptions(dir, parseOpts)
 	if err != nil {
 		return nil, err
 	}
@@ -81,6 +85,10 @@ func NewRunContext(dir string, jsonOutput bool, cfg *config.Config) (*RunContext
 
 	g, err := graphpkg.Build(items, buildOpts...)
 	if err != nil {
+		if errors.Is(err, graphpkg.ErrUnknownDependency) && len(skipped) > 0 {
+			return nil, fmt.Errorf("%w (%s skipped as unreadable; see warnings)", err, filesWere(len(skipped)))
+		}
+
 		return nil, err
 	}
 
@@ -105,7 +113,17 @@ func NewRunContext(dir string, jsonOutput bool, cfg *config.Config) (*RunContext
 		statusIsAlias: statusIsAlias,
 		fieldAliases:  cfg.FieldAliases,
 		parseOpts:     parseOpts,
+		skipped:       skipped,
 	}, nil
+}
+
+// filesWere returns "1 file was" or "<n> files were".
+func filesWere(n int) string {
+	if n == 1 {
+		return "1 file was"
+	}
+
+	return fmt.Sprintf("%d files were", n)
 }
 
 // mutateOptions returns the options that write the item's status under the key
