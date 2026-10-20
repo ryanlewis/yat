@@ -421,8 +421,8 @@ func TestParse_DependenciesEdgeCases(t *testing.T) {
 		},
 		{
 			name:     "duplicate dependencies",
-			input:    "---\nid: TK-001\ndependencies: [A, A, A]\nstatus: todo\n---\n",
-			wantDeps: []string{"A", "A", "A"}, // no dedup at parse level
+			input:    "---\nid: TK-001\ndependencies: [A, B, A, B, A]\nstatus: todo\n---\n",
+			wantDeps: []string{"A", "B"}, // first occurrence kept, in order
 		},
 	}
 

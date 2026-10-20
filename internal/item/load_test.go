@@ -165,6 +165,30 @@ func TestLoadAll_SkipsBadFilesWithWarning(t *testing.T) {
 			},
 			want: "is a directory",
 		},
+		{
+			name: "unreadable subfolder",
+			setup: func(t *testing.T, dir string) string {
+				if os.Geteuid() == 0 {
+					t.Skip("root can read any directory")
+				}
+
+				p := filepath.Join(dir, "locked")
+				if err := os.Mkdir(p, 0o750); err != nil {
+					t.Fatal(err)
+				}
+
+				writeFile(t, filepath.Join(p, "b.md"), "---\nid: B-1\n---\n")
+
+				if err := os.Chmod(p, 0); err != nil {
+					t.Fatal(err)
+				}
+
+				t.Cleanup(func() { _ = os.Chmod(p, 0o750) })
+
+				return p
+			},
+			want: "permission denied",
+		},
 	}
 
 	for _, tt := range tests {
