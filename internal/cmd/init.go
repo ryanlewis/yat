@@ -41,6 +41,10 @@ For a project-local install: ` + "`yat skill install claude --path .claude/skill
 Core loop: ` + "`yat next`" + `, ` + "`yat start <id>`" + `, ` + "`yat complete <id>`" + `.
 `
 
+// agentHeading opens every yat block init has ever appended: the pointer above
+// and the older full skill text, whose demoted title is the same line.
+const agentHeading = "## yat (issue tracker)"
+
 const (
 	defaultDir                      = "spec"
 	sampleItemFile                  = "example.md"
@@ -99,7 +103,12 @@ func (i *InitCmd) Run(jsonMode bool, stdout io.Writer, stdin io.Reader) error {
 
 	plan := buildInitPlan(dir)
 
-	if found := detectAgentFiles(); len(found) > 0 {
+	found, skipped := detectAgentFiles()
+	for _, f := range skipped {
+		fmt.Fprintf(stdout, "%s already has yat instructions, skipping.\n", f)
+	}
+
+	if len(found) > 0 {
 		fmt.Fprintf(stdout, "Add yat instructions to %s? [Y/n]: ", strings.Join(found, ", "))
 		if confirmPrompt(scanner) {
 			plan.agentFiles = found
@@ -149,15 +158,33 @@ func buildInitPlan(dir string) initPlan {
 	return p
 }
 
-func detectAgentFiles() []string {
-	var found []string
+// detectAgentFiles returns the agent files that exist and lack a yat block,
+// and those that already have one and are left alone.
+func detectAgentFiles() (found, skipped []string) {
 	for _, name := range agentMDFiles {
-		if _, err := os.Stat(name); err == nil {
+		data, err := os.ReadFile(name)
+		if err != nil {
+			continue
+		}
+
+		if hasAgentHeading(string(data)) {
+			skipped = append(skipped, name)
+		} else {
 			found = append(found, name)
 		}
 	}
 
-	return found
+	return found, skipped
+}
+
+func hasAgentHeading(content string) bool {
+	for line := range strings.Lines(content) {
+		if strings.TrimRight(line, " \t\r\n") == agentHeading {
+			return true
+		}
+	}
+
+	return false
 }
 
 func printPlan(stdout io.Writer, p initPlan) {

@@ -521,3 +521,85 @@ func TestShowDirSuggestions_Empty(t *testing.T) {
 		t.Errorf("expected no output for empty directory, got: %s", buf.String())
 	}
 }
+
+func TestInitCmd_AgentFiles_SkipsExistingBlock(t *testing.T) {
+	// A file with the short pointer (current) or the full skill text (older yat)
+	// must not get a second block. Both open with the same heading.
+	blocks := map[string]string{
+		"pointer":    agentPointer,
+		"full skill": "\n## yat (issue tracker)\n\nyat is a CLI issue tracker.\n\n### Safety\n\n- Safe to run freely.\n",
+	}
+
+	for name, block := range blocks {
+		t.Run(name, func(t *testing.T) {
+			dir := chdirTemp(t)
+
+			original := "# Claude\n" + block
+			os.WriteFile(filepath.Join(dir, "CLAUDE.md"), []byte(original), 0o644)
+			os.WriteFile(filepath.Join(dir, "AGENTS.md"), []byte("# Agents\n"), 0o644)
+
+			var buf bytes.Buffer
+			stdin := strings.NewReader("y\ny\n") // accept agent files, accept plan
+
+			cmd := &InitCmd{Dir: "spec"}
+			if err := cmd.Run(false, &buf, stdin); err != nil {
+				t.Fatalf("Run: %v", err)
+			}
+
+			out := buf.String()
+			if !strings.Contains(out, "Add yat instructions to AGENTS.md? [Y/n]") {
+				t.Errorf("expected prompt for AGENTS.md only, got:\n%s", out)
+			}
+			if !strings.Contains(out, "CLAUDE.md already has yat instructions, skipping.") {
+				t.Errorf("expected skip note for CLAUDE.md, got:\n%s", out)
+			}
+
+			data, err := os.ReadFile(filepath.Join(dir, "CLAUDE.md"))
+			if err != nil {
+				t.Fatalf("reading CLAUDE.md: %v", err)
+			}
+			if string(data) != original {
+				t.Errorf("CLAUDE.md was modified:\n%s", data)
+			}
+
+			data, err = os.ReadFile(filepath.Join(dir, "AGENTS.md"))
+			if err != nil {
+				t.Fatalf("reading AGENTS.md: %v", err)
+			}
+			if strings.Count(string(data), "## yat (issue tracker)") != 1 {
+				t.Errorf("expected one yat block in AGENTS.md, got:\n%s", data)
+			}
+		})
+	}
+}
+
+func TestInitCmd_AgentFiles_AllSkippedNoPrompt(t *testing.T) {
+	dir := chdirTemp(t)
+
+	original := "# Claude\n" + agentPointer
+	os.WriteFile(filepath.Join(dir, "CLAUDE.md"), []byte(original), 0o644)
+
+	var buf bytes.Buffer
+	stdin := strings.NewReader("y\n") // accept plan; no agent prompt expected
+
+	cmd := &InitCmd{Dir: "spec"}
+	if err := cmd.Run(false, &buf, stdin); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+
+	out := buf.String()
+	if strings.Contains(out, "Add yat instructions") {
+		t.Errorf("did not expect an agent prompt, got:\n%s", out)
+	}
+	if !strings.Contains(out, "Initialized yat project.") {
+		t.Errorf("expected init to proceed, got:\n%s", out)
+	}
+
+	data, err := os.ReadFile(filepath.Join(dir, "CLAUDE.md"))
+	if err != nil {
+		t.Fatalf("reading CLAUDE.md: %v", err)
+	}
+	if string(data) != original {
+		t.Errorf("CLAUDE.md was modified:\n%s", data)
+	}
+}
