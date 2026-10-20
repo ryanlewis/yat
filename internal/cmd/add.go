@@ -49,6 +49,10 @@ type addJSON struct {
 const (
 	maxSlugLen     = 50
 	defaultIDWidth = 3
+
+	// defaultSkippedIDWidth is the most digits a skipped file's name may number
+	// an id with when no item has one of the prefix yet.
+	defaultSkippedIDWidth = 4
 )
 
 // numberedID splits an id into a prefix and a trailing number (TK-007 → TK-, 007).
@@ -212,6 +216,11 @@ func (a *AddCmd) resolveID(rc *RunContext) (string, error) {
 			return "", fmt.Errorf("item %q already exists", a.ID)
 		}
 
+		if path, ok := skippedWithID(rc.skipped, a.ID); ok {
+			return "", fmt.Errorf("item %q may already exist in %s, which was skipped as unreadable; "+
+				"make it readable or pass another --id", a.ID, path)
+		}
+
 		return a.ID, nil
 	}
 
@@ -233,7 +242,7 @@ func (a *AddCmd) resolveID(rc *RunContext) (string, error) {
 		}
 	}
 
-	taken, err := skippedIDs(rc.skipped, prefix)
+	taken, err := skippedIDs(rc.skipped, prefix, idWidth(rc.Items, prefix))
 	if err != nil {
 		return "", err
 	}
@@ -247,16 +256,17 @@ func (a *AddCmd) resolveID(rc *RunContext) (string, error) {
 }
 
 // skippedIDs returns an item for each skipped file whose name starts with an id
-// numbered from prefix, so nextID counts that number as taken. Any other skipped
-// file or folder may hold the next id, so it refuses to pick one.
-func skippedIDs(skipped []string, prefix string) ([]*item.Item, error) {
+// numbered from prefix, no wider than width digits, so nextID counts that number
+// as taken. Any other skipped file or folder (TK-20240115-retro.md) may hold the
+// next id, so it refuses to pick one.
+func skippedIDs(skipped []string, prefix string, width int) ([]*item.Item, error) {
 	var (
 		taken   []*item.Item
 		unknown []string
 	)
 
 	for _, path := range skipped {
-		if id, ok := skippedID(path, prefix); ok {
+		if id, ok := skippedID(path, prefix, width); ok {
 			taken = append(taken, &item.Item{ID: id})
 		} else {
 			unknown = append(unknown, path)
@@ -272,8 +282,9 @@ func skippedIDs(skipped []string, prefix string) ([]*item.Item, error) {
 }
 
 // skippedID returns the id the name of the skipped file at path starts with
-// (TK-007 from TK-007-fix-login.md) when it is numbered from prefix.
-func skippedID(path, prefix string) (string, bool) {
+// (TK-007 from TK-007-fix-login.md) when it is numbered from prefix with at
+// most width digits.
+func skippedID(path, prefix string, width int) (string, bool) {
 	if info, err := os.Lstat(path); err != nil || info.IsDir() {
 		return "", false
 	}
@@ -284,11 +295,43 @@ func skippedID(path, prefix string) (string, bool) {
 	}
 
 	digits := rest[:len(rest)-len(strings.TrimLeft(rest, "0123456789"))]
-	if digits == "" {
+	if digits == "" || len(digits) > width {
 		return "", false
 	}
 
 	return prefix + digits, true
+}
+
+// skippedWithID returns the first skipped path whose name starts with id
+// followed by "-" or ".", as the file may hold the item with that id.
+func skippedWithID(skipped []string, id string) (string, bool) {
+	for _, path := range skipped {
+		name := filepath.Base(path)
+		if strings.HasPrefix(name, id+"-") || strings.HasPrefix(name, id+".") {
+			return path, true
+		}
+	}
+
+	return "", false
+}
+
+// idWidth returns the most digits an item id numbered from prefix has, or
+// defaultSkippedIDWidth when no item has one.
+func idWidth(items []*item.Item, prefix string) int {
+	width := 0
+
+	for _, it := range items {
+		digits, ok := strings.CutPrefix(it.ID, prefix)
+		if ok && digits != "" && strings.Trim(digits, "0123456789") == "" {
+			width = max(width, len(digits))
+		}
+	}
+
+	if width == 0 {
+		return defaultSkippedIDWidth
+	}
+
+	return width
 }
 
 // hasID reports whether an item in items has id.
