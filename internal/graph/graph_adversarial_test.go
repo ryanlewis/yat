@@ -529,7 +529,7 @@ func TestBuild_DuplicateDependencies(t *testing.T) {
 		t.Error("B should be blocked")
 	}
 
-	// Edges should show the duplicates
+	// Duplicates collapse to a single edge
 	edges := g.Edges()
 	count := 0
 	for _, e := range edges {
@@ -537,8 +537,8 @@ func TestBuild_DuplicateDependencies(t *testing.T) {
 			count++
 		}
 	}
-	if count != 3 {
-		t.Errorf("expected 3 duplicate edges A->B, got %d", count)
+	if count != 1 {
+		t.Errorf("expected 1 edge A->B, got %d", count)
 	}
 }
 
@@ -598,5 +598,42 @@ func TestUnblockedBy_ComplexFanOut(t *testing.T) {
 	// B should still be blocked (also depends on E which is todo)
 	if len(stillBlocked) != 1 || stillBlocked[0].ID != "B" {
 		t.Errorf("stillBlocked should be [B], got %d items", len(stillBlocked))
+	}
+}
+
+// --- Duplicate dependencies ---
+
+func TestBuild_DuplicateDependencyListedOnce(t *testing.T) {
+	items := []*item.Item{
+		{ID: "A", Status: item.StatusTodo},
+		{ID: "B", Status: item.StatusTodo, Dependencies: []string{"A", "A"}},
+		{ID: "C", Status: item.StatusTodo, Dependencies: []string{"A"}},
+	}
+	g, err := Build(items)
+	if err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+
+	if got := g.WaitingOn("B"); len(got) != 1 || got[0] != "A" {
+		t.Errorf("WaitingOn(B) = %v, want [A]", got)
+	}
+
+	if got := g.DependentsOf("A"); len(got) != 2 {
+		t.Errorf("DependentsOf(A) = %v, want [B C]", got)
+	}
+
+	if got := g.Edges(); len(got) != 2 {
+		t.Errorf("Edges() = %v, want 2 edges", got)
+	}
+
+	items[0].Status = item.StatusDone
+
+	unblocked := g.UnblockedBy("A")
+	if len(unblocked) != 2 || unblocked[0].ID != "B" || unblocked[1].ID != "C" {
+		ids := make([]string, len(unblocked))
+		for i, u := range unblocked {
+			ids[i] = u.ID
+		}
+		t.Errorf("UnblockedBy(A) = %v, want [B C]", ids)
 	}
 }
