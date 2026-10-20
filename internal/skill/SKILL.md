@@ -47,6 +47,7 @@ Always pass `--json` when you parse output. The shapes you will use most:
 - `yat status --json` — `{"total_items", "total_points", "by_type", "by_status", "active_phase", "by_phase", "ready_now": [ids], "deepest_layer", "deepest_items"}`.
 - `yat next --json` — `{"id", "title", "priority", "type", "points", "phase", "file_path", "body"}`, or `null` when nothing is ready.
 - `yat ready --json` — `[{"id", "priority", "type", "status", "title"}]`.
+- `yat --json` (dashboard) — `{"project_found", "dir", "counts", "in_progress": [...], "in_progress_more", "ready": [...], "ready_more", "phase"}`; both lists hold at most five items, and `*_more` counts the rest.
 - `yat show <id> --json` — the item, including `dependencies`, `status` and `body`.
 - `yat add "<title>" --json` — `{"id", "path", "title", "type", "priority", "points", "dependencies", "status", "phase", "body"}`.
 - `yat complete <id> --json` — `{"id", "title", "unblocked": [{"id", "title"}], "still_blocked": [{"id", "title", "waiting_on"}]}`.

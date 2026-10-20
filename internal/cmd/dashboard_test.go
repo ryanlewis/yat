@@ -65,10 +65,41 @@ func TestDashboardCmd_ReadyLimit(t *testing.T) {
 	if err := (&DashboardCmd{}).Run(rc); err != nil {
 		t.Fatalf("Run: %v", err)
 	}
-	for _, want := range []string{"...and 2 more — run `yat ready`", "Phase: mvp * (2/16 pts done)"} {
+	for _, want := range []string{"...and 2 more — run `yat ready`", "Phase: mvp (2/16 pts done)"} {
 		if !strings.Contains(buf.String(), want) {
 			t.Errorf("expected %q in output, got:\n%s", want, buf.String())
 		}
+	}
+}
+
+func TestDashboardCmd_InProgressLimit(t *testing.T) {
+	items := make([]*item.Item, 0, dashboardInProgressLimit+2)
+	for i := range dashboardInProgressLimit + 2 {
+		items = append(items, &item.Item{ID: fmt.Sprintf("T-%02d", i), Title: "t", Status: item.StatusInProgress})
+	}
+	rc, buf := newTestContext(t, items, true)
+
+	if err := (&DashboardCmd{}).Run(rc); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+
+	var got dashboardJSON
+	if err := json.Unmarshal(buf.Bytes(), &got); err != nil {
+		t.Fatalf("JSON unmarshal: %v", err)
+	}
+	if len(got.InProgress) != dashboardInProgressLimit || got.InProgressMore != 2 ||
+		got.Counts.InProgress != dashboardInProgressLimit+2 {
+		t.Errorf("in progress = %d, more = %d, count = %d",
+			len(got.InProgress), got.InProgressMore, got.Counts.InProgress)
+	}
+
+	rc.JSON = false
+	buf.Reset()
+	if err := (&DashboardCmd{}).Run(rc); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if want := "  T-04  t\n  ...and 2 more — run `yat list`\n"; !strings.Contains(buf.String(), want) {
+		t.Errorf("expected %q in output, got:\n%s", want, buf.String())
 	}
 }
 

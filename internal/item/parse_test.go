@@ -296,6 +296,13 @@ func TestExtractHeading(t *testing.T) {
 		{"backticks do not close tilde fence", "~~~\n```\n# Hidden\n~~~\n# Title", "Title"},
 		{"shorter fence does not close longer one", "~~~~\n~~~\n# Hidden\n~~~~\n# Title", "Title"},
 		{"info string does not close fence", "```\n```go\n# Hidden\n```\n# Title", "Title"},
+		{"indented code is not a heading", "    # Code\n# Title", "Title"},
+		{"tab-indented code is not a heading", "\t# Code\n# Title", "Title"},
+		{"three-space indent is a heading", "   # Title", "Title"},
+		{"indented code does not open a fence", "    ```\n# Title", "Title"},
+		{"indented fence does not close fence", "```\n    ```\n# Hidden\n```\n# Title", "Title"},
+		{"backtick in info string is not a fence", "```foo`bar\n# Title", "Title"},
+		{"backtick in tilde info string still fences", "~~~foo`bar\n# Hidden\n~~~\n# Title", "Title"},
 	}
 
 	for _, tt := range tests {
