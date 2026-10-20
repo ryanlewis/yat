@@ -26,14 +26,17 @@ jobs:
       - uses: golangci/golangci-lint-action@9fae48acfc02a90574d7c304a1758ef9895495fa # v7.0.1
         with:
           version: v2.11.4
-          # The action's own `config verify` fetches the JSON schema with a
-          # hard-coded 2s timeout, which golangci-lint.run sometimes misses.
-          # The next step verifies against a copy fetched with retries instead.
+          # golangci-lint `config verify`, which the action runs, fetches the
+          # JSON schema with a hard-coded 2s timeout that golangci-lint.run
+          # sometimes misses. The next step verifies against a copy fetched
+          # with retries instead.
           verify: false
 
       # Uses the binary the action installed in $HOME (not on PATH), so the
-      # version stays the one pinned above.
+      # version stays the one pinned above. Runs even when lint fails, so a
+      # bad config key is still reported.
       - name: Verify golangci-lint config
+        if: ${{ !cancelled() }}
         run: |
           shopt -s nullglob
           bins=("$HOME"/golangci-lint-*/golangci-lint)
