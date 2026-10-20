@@ -52,6 +52,8 @@ Always pass `--json` when you parse output. The shapes you will use most:
 
 Errors are not JSON: they print `error: <message>` to stderr and exit 1, with or without `--json`. Branch on the exit status.
 
+A `.md` file yat cannot read, or whose frontmatter is not a YAML mapping, is skipped with `warning: skipping <file>: <reason>` on stderr. The command still runs and stdout (including `--json`) is unaffected.
+
 ## Common flows
 
 Pick up the next item and read it:

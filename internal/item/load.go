@@ -3,13 +3,20 @@ package item
 import (
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
+	"os"
 	"path/filepath"
 	"strings"
 )
 
+// warnOut receives one line per .md file that LoadAll skips with a warning.
+var warnOut io.Writer = os.Stderr
+
 // LoadAll discovers and parses all .md files from the given directory (recursively).
-// Files without a valid id field in frontmatter are silently skipped.
+// Files without a valid id field in frontmatter are silently skipped. Files that
+// cannot be read, or whose frontmatter is not a YAML mapping, are skipped with a
+// warning on stderr.
 func LoadAll(dir string) ([]*Item, error) {
 	return LoadAllWithOptions(dir, ParseOptions{})
 }
@@ -37,6 +44,21 @@ func LoadAllWithOptions(dir string, opts ParseOptions) ([]*Item, error) {
 				return nil
 			}
 
+			// A *fs.PathError means the file could not be read (permissions,
+			// a broken symlink, a symlink to a directory).
+			var pathErr *fs.PathError
+			if errors.As(parseErr, &pathErr) {
+				warnSkip(path, pathErr.Err)
+
+				return nil
+			}
+
+			if errors.Is(parseErr, ErrNotMapping) {
+				warnSkip(path, ErrNotMapping)
+
+				return nil
+			}
+
 			return fmt.Errorf("loading %s: %w", path, parseErr)
 		}
 
@@ -51,6 +73,11 @@ func LoadAllWithOptions(dir string, opts ParseOptions) ([]*Item, error) {
 	}
 
 	return items, nil
+}
+
+// warnSkip writes one warning line saying path was skipped and why.
+func warnSkip(path string, err error) {
+	_, _ = fmt.Fprintf(warnOut, "warning: skipping %s: %v\n", path, err)
 }
 
 // Index builds a map from item ID to Item for fast lookup.
