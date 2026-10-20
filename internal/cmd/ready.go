@@ -65,7 +65,7 @@ func (r *ReadyCmd) Run(rc *RunContext) error {
 			padWidth(it.ID, maxID),
 			padRight(s.Priority(it.Priority), len(string(it.Priority)), maxPri),
 			padWidth(it.Type, maxType),
-			it.Title)
+			oneLine(it.Title))
 	}
 
 	return nil

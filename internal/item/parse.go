@@ -136,12 +136,17 @@ func dedupe(ids []string) []string {
 }
 
 // extractHeading returns the text of the first ATX heading (h1–h3) in the body, or "".
-// Headings inside fenced code blocks (``` or ~~~) are ignored.
+// Headings inside fenced code blocks (``` or ~~~) and indented code are ignored.
 func extractHeading(body []byte) string {
 	var fence []byte // marker of the open fence, nil outside one
 
 	for _, line := range bytes.Split(body, []byte("\n")) {
 		trimmed := bytes.TrimSpace(line)
+
+		// Four columns of indent make a code line: never a heading or a fence.
+		if len(trimmed) > 0 && indentWidth(line) >= codeIndent {
+			continue
+		}
 
 		if fence != nil {
 			// Only a bare run of the same character, at least as long, closes the fence.
@@ -186,7 +191,34 @@ func fenceMarker(line []byte) []byte {
 		return nil
 	}
 
+	// A backtick fence's info string cannot hold a backtick: ```a`b is inline code.
+	if line[0] == '`' && bytes.IndexByte(line[n:], '`') >= 0 {
+		return nil
+	}
+
 	return line[:n]
+}
+
+// codeIndent is the indent, in columns, at which a line becomes indented code.
+const codeIndent = 4
+
+// indentWidth returns the columns of leading whitespace in line, with tabs
+// advancing to the next multiple of four.
+func indentWidth(line []byte) int {
+	w := 0
+
+	for _, c := range line {
+		switch c {
+		case ' ':
+			w++
+		case '\t':
+			w += codeIndent - w%codeIndent
+		default:
+			return w
+		}
+	}
+
+	return w
 }
 
 // remapAliases rewrites aliased frontmatter keys to their canonical names.

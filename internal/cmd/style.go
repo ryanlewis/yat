@@ -157,6 +157,14 @@ func padWidth(s string, targetWidth int) string {
 	return padRight(s, lipgloss.Width(s), targetWidth)
 }
 
+// oneLine replaces newlines and tabs with spaces so a title stays on one line
+// and its width can be counted when padding columns.
+func oneLine(s string) string {
+	return lineBreaks.Replace(s)
+}
+
+var lineBreaks = strings.NewReplacer("\r\n", " ", "\n", " ", "\r", " ", "\t", " ")
+
 // displayWidth returns the number of terminal columns s occupies.
 func displayWidth(s string) int {
 	return lipgloss.Width(s)

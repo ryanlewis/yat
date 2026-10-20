@@ -103,3 +103,52 @@ func TestStatusCmd_AlignsWidePhases(t *testing.T) {
 	}
 	assertColumnAligned(t, buf.String(), "1  (0 pts)", 2)
 }
+
+// TestTabularOutput_TitlesWithBreaks checks that newlines and tabs in titles
+// are shown as spaces, so each item stays on one line with its columns intact.
+func TestTabularOutput_TitlesWithBreaks(t *testing.T) {
+	broken := func() []*item.Item {
+		items := wideItems()
+		items[2].Title = "Plain\ntitle"
+		items[5].Title = "Ready\tbut\r\nlong title"
+		return items
+	}
+
+	for _, tc := range []struct {
+		name   string
+		cmd    interface{ Run(*RunContext) error }
+		marker string
+		lines  int
+	}{
+		{"dashboard", &DashboardCmd{}, "[High]", 3},
+		{"list", &ListCmd{}, "waiting on:", 2},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			rc, buf := newTestContext(t, broken(), false)
+			if err := tc.cmd.Run(rc); err != nil {
+				t.Fatalf("Run: %v", err)
+			}
+			out := buf.String()
+			if strings.Contains(out, "\t") {
+				t.Errorf("tab in output:\n%s", out)
+			}
+			assertColumnAligned(t, out, tc.marker, tc.lines)
+		})
+	}
+
+	rc, buf := newTestContext(t, broken(), false)
+	if err := (&ReadyCmd{}).Run(rc); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if !strings.Contains(buf.String(), "Plain title\n") {
+		t.Errorf("expected title on one line, got:\n%s", buf.String())
+	}
+
+	rc, buf = newTestContext(t, broken(), true)
+	if err := (&ListCmd{}).Run(rc); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if !strings.Contains(buf.String(), `"Plain\ntitle"`) {
+		t.Errorf("expected raw title in JSON, got:\n%s", buf.String())
+	}
+}

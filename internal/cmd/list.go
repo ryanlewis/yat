@@ -154,7 +154,7 @@ func (l *ListCmd) runText(rc *RunContext, groups []itemGroup) error {
 			maxPri = max(maxPri, len(string(gi.item.Priority)))
 			maxType = max(maxType, displayWidth(gi.item.Type))
 			if len(gi.waitingOn) > 0 {
-				maxTitle = max(maxTitle, displayWidth(gi.item.Title))
+				maxTitle = max(maxTitle, displayWidth(oneLine(gi.item.Title)))
 			}
 		}
 
@@ -164,14 +164,14 @@ func (l *ListCmd) runText(rc *RunContext, groups []itemGroup) error {
 					padWidth(gi.item.ID, maxID),
 					padRight(s.Priority(gi.item.Priority), len(string(gi.item.Priority)), maxPri),
 					padWidth(gi.item.Type, maxType),
-					padWidth(gi.item.Title, maxTitle),
+					padWidth(oneLine(gi.item.Title), maxTitle),
 					s.Dim("waiting on:"), strings.Join(gi.waitingOn, ", "))
 			} else {
 				fmt.Fprintf(rc.Stdout, "  %s  %s  %s  %s\n",
 					padWidth(gi.item.ID, maxID),
 					padRight(s.Priority(gi.item.Priority), len(string(gi.item.Priority)), maxPri),
 					padWidth(gi.item.Type, maxType),
-					gi.item.Title)
+					oneLine(gi.item.Title))
 			}
 		}
 	}
