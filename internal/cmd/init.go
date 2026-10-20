@@ -229,6 +229,11 @@ func fenceRun(line string) string {
 		return ""
 	}
 
+	// A backtick fence's info string cannot hold a backtick: that is inline code.
+	if run[0] == '`' && strings.Contains(rest[len(run):], "`") {
+		return ""
+	}
+
 	return run
 }
 
