@@ -653,3 +653,47 @@ func TestLoad_InvalidYAML(t *testing.T) {
 		t.Fatal("expected error for invalid YAML")
 	}
 }
+
+func TestLoad_RelativeDirResolvesAgainstConfigFile(t *testing.T) {
+	root := t.TempDir()
+	t.Chdir(root)
+
+	// Use the working directory's spelling of root (macOS resolves /var to /private/var).
+	root, wdErr := os.Getwd()
+	if wdErr != nil {
+		t.Fatal(wdErr)
+	}
+
+	if err := os.WriteFile(filepath.Join(root, ".yat.yaml"), []byte("dir: spec\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	subdir := filepath.Join(root, "docs", "notes")
+	if err := os.MkdirAll(subdir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	t.Chdir(subdir)
+
+	cfg, err := config.Load()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	want := filepath.Join(root, "spec")
+	if cfg.Dir != want {
+		t.Fatalf("expected %q, got %q", want, cfg.Dir)
+	}
+}
+
+func TestExpandTilde_OtherUserNotExpanded(t *testing.T) {
+	// ~bob/x names another user's home; it must not become $HOME/bob/x.
+	got, err := config.ExpandTilde("~bob/items")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if got != "~bob/items" {
+		t.Fatalf("expected path unchanged, got %q", got)
+	}
+}

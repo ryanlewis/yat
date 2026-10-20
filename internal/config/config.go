@@ -180,6 +180,11 @@ func tryLoadFromDir(dir string) (Config, bool, error) {
 			return Config{}, false, expandErr
 		}
 
+		// A relative dir is relative to the config file, not to wherever yat runs.
+		if expanded != "" && !filepath.IsAbs(expanded) {
+			expanded = filepath.Join(dir, expanded)
+		}
+
 		cfg.Dir = expanded
 
 		return cfg, true, nil
@@ -273,7 +278,8 @@ func (c *Config) MergeFrom(other *Config) {
 }
 
 func ExpandTilde(path string) (string, error) {
-	if !strings.HasPrefix(path, "~") {
+	// Only "~" and "~/..." mean the current user's home; "~bob" is left as is.
+	if path != "~" && !strings.HasPrefix(path, "~/") {
 		return path, nil
 	}
 
