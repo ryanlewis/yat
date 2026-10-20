@@ -28,6 +28,10 @@ var (
 // ErrMissingID is returned when a file has item-like frontmatter but no id field.
 var ErrMissingID = errors.New("item-like frontmatter has no id field")
 
+// ErrNotMapping is returned when a file's frontmatter is valid YAML but not a
+// mapping (e.g. a line of prose between --- delimiters), so it cannot be an item.
+var ErrNotMapping = errors.New("frontmatter is not a YAML mapping")
+
 // ParseFile reads a markdown file and extracts the YAML frontmatter into an Item.
 // The body (everything after the closing ---) is stored in Body.
 // Returns nil if the file has no valid frontmatter or no id field.
@@ -48,6 +52,7 @@ func ParseFileWithOptions(path string, opts ParseOptions) (*Item, error) {
 // Parse extracts an Item from raw file bytes.
 // Returns nil (no error) if the file has no valid frontmatter.
 // Returns ErrMissingID (wrapped) if frontmatter contains item fields but no id.
+// Returns ErrNotMapping (wrapped) if the frontmatter is YAML but not a mapping.
 // Returns an error if status or priority values are not recognized.
 func Parse(data []byte, path string) (*Item, error) {
 	return ParseWithOptions(data, path, ParseOptions{})
@@ -72,6 +77,10 @@ func ParseWithOptions(data []byte, path string, opts ParseOptions) (*Item, error
 
 	var item Item
 	if err := yaml.Unmarshal(fm, &item); err != nil {
+		if isNonMapping(fm) {
+			return nil, fmt.Errorf("%w: %s", ErrNotMapping, path)
+		}
+
 		return nil, fmt.Errorf("parsing frontmatter in %s: %w", path, err)
 	}
 
@@ -200,6 +209,17 @@ func validateStatus(item *Item, opts ParseOptions, path string) error {
 	}
 
 	return nil
+}
+
+// isNonMapping reports whether fm is valid YAML whose top-level node is not a
+// mapping. Invalid YAML reports false, so syntax errors stay errors.
+func isNonMapping(fm []byte) bool {
+	var doc yaml.Node
+	if err := yaml.Unmarshal(fm, &doc); err != nil || len(doc.Content) == 0 {
+		return false
+	}
+
+	return doc.Content[0].Kind != yaml.MappingNode
 }
 
 func looksLikeItem(item *Item) bool {
