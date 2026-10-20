@@ -273,6 +273,17 @@ func TestInitCmd_AgentFiles_ClaudeMD(t *testing.T) {
 	if !strings.Contains(content, "## yat (issue tracker)") {
 		t.Error("expected yat instructions in CLAUDE.md")
 	}
+	for _, want := range []string{"yat skill show", "yat skill install claude --path .claude/skills", "yat next", "yat start <id>", "yat complete <id>"} {
+		if !strings.Contains(content, want) {
+			t.Errorf("pointer is missing %q", want)
+		}
+	}
+	if strings.Contains(content, "## Safety") {
+		t.Error("full skill text was appended instead of a pointer")
+	}
+	if n := strings.Count(content, "\n"); n > len(strings.Split(original, "\n"))+10 {
+		t.Errorf("pointer is too long: %d lines", n)
+	}
 }
 
 func TestInitCmd_AgentFiles_AgentsMD(t *testing.T) {

@@ -13,7 +13,6 @@ import (
 
 	"github.com/ergochat/readline"
 	"github.com/ryanlewis/yat/internal/config"
-	"github.com/ryanlewis/yat/internal/skill"
 	"golang.org/x/term"
 )
 
@@ -31,6 +30,16 @@ type initJSON struct {
 }
 
 var agentMDFiles = []string{"CLAUDE.md", "AGENTS.md"}
+
+// agentPointer is appended to CLAUDE.md / AGENTS.md. It points at `yat skill`
+// instead of copying the skill text, so the two cannot drift apart.
+const agentPointer = `
+## yat (issue tracker)
+
+This project tracks items with yat. Run ` + "`yat skill show`" + ` for the full guide.
+For a project-local install: ` + "`yat skill install claude --path .claude/skills`" + `.
+Core loop: ` + "`yat next`" + `, ` + "`yat start <id>`" + `, ` + "`yat complete <id>`" + `.
+`
 
 const (
 	defaultDir                      = "spec"
@@ -216,7 +225,7 @@ func appendAgentInstructions(path string) error {
 		return fmt.Errorf("opening %s: %w", path, err)
 	}
 
-	_, writeErr := f.WriteString("\n" + skill.Section())
+	_, writeErr := f.WriteString(agentPointer)
 	if closeErr := f.Close(); writeErr == nil {
 		writeErr = closeErr
 	}

@@ -37,24 +37,6 @@ func Render() string {
 	return fmt.Sprintf("---\nname: %s\ndescription: %s\n---\n\n%s", Name, Description, body)
 }
 
-// Section returns the body with every heading demoted one level, so it can be
-// appended to a project's CLAUDE.md or AGENTS.md as a "## yat" section. Lines
-// inside fenced code blocks are left alone.
-func Section() string {
-	lines := strings.SplitAfter(body, "\n")
-	inFence := false
-	for i, line := range lines {
-		if strings.HasPrefix(line, "```") {
-			inFence = !inFence
-			continue
-		}
-		if !inFence && strings.HasPrefix(line, "#") {
-			lines[i] = "#" + line
-		}
-	}
-	return strings.Join(lines, "")
-}
-
 // skillFileName is the one file every agent installs today.
 const skillFileName = "SKILL.md"
 
