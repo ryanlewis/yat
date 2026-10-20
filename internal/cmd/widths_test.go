@@ -73,10 +73,11 @@ func TestReadyCmd_AlignsWideTypes(t *testing.T) {
 	out := buf.String()
 	// TK-002 has a wide type; titles of the other ready items must start
 	// at the same column as its title.
-	want := -1
+	want, found := -1, 0
 	for _, line := range strings.Split(out, "\n") {
 		for _, title := range []string{"日本語のタイトル", "Plain title", "Café ünïcode"} {
 			if i := strings.Index(line, title); i >= 0 {
+				found++
 				w := lipgloss.Width(line[:i])
 				if want == -1 {
 					want = w
@@ -86,4 +87,19 @@ func TestReadyCmd_AlignsWideTypes(t *testing.T) {
 			}
 		}
 	}
+	if found != 3 {
+		t.Errorf("found %d titles, want 3:\n%s", found, out)
+	}
+}
+
+func TestStatusCmd_AlignsWidePhases(t *testing.T) {
+	items := []*item.Item{
+		{ID: "TK-001", Title: "One", Type: "Task", Priority: item.PriorityHigh, Status: item.StatusTodo, Phase: "フェーズ1"},
+		{ID: "TK-002", Title: "Two", Type: "Task", Priority: item.PriorityHigh, Status: item.StatusTodo, Phase: "alpha"},
+	}
+	rc, buf := newTestContext(t, items, false)
+	if err := (&StatusCmd{}).Run(rc); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	assertColumnAligned(t, buf.String(), "1  (0 pts)", 2)
 }

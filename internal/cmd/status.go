@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 )
 
@@ -143,6 +144,28 @@ func (s *StatusCmd) writeJSON(rc *RunContext, d *statusData) error {
 	})
 }
 
+// writePhases prints the phase table, padding by display width rather than
+// tabwriter's rune count so phase names in CJK or emoji line up.
+func writePhases(rc *RunContext, d *statusData, names []string) {
+	var maxName, maxCount int
+	for _, name := range names {
+		maxName = max(maxName, displayWidth(name)+1)
+		maxCount = max(maxCount, len(strconv.Itoa(d.byPhase[name].count)))
+	}
+
+	for _, name := range names {
+		g := d.byPhase[name]
+		marker := ""
+
+		if name == d.activePhase {
+			marker = " *"
+		}
+
+		rc.printf("  %s  %s  (%d pts)%s\n",
+			padWidth(name+":", maxName), padWidth(strconv.Itoa(g.count), maxCount), g.points, marker)
+	}
+}
+
 func (s *StatusCmd) writeText(rc *RunContext, d *statusData) error {
 	st := rc.styles()
 	typeParts := formatTypeCounts(d.byType)
@@ -176,22 +199,7 @@ func (s *StatusCmd) writeText(rc *RunContext, d *statusData) error {
 
 		sort.Strings(phaseNames)
 
-		pw := rc.newTabWriter()
-
-		for _, name := range phaseNames {
-			g := d.byPhase[name]
-			marker := ""
-
-			if name == d.activePhase {
-				marker = " *"
-			}
-
-			fmt.Fprintf(pw, "  %s:\t%d\t(%d pts)%s\n", name, g.count, g.points, marker)
-		}
-
-		if err := pw.Flush(); err != nil {
-			return err
-		}
+		writePhases(rc, d, phaseNames)
 	}
 
 	rc.printf("\n")
