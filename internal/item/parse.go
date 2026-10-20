@@ -105,6 +105,7 @@ func ParseWithOptions(data []byte, path string, opts ParseOptions) (*Item, error
 		return nil, fmt.Errorf("invalid priority %q in %s: must be Critical, High, Medium, or Low", item.Priority, path)
 	}
 
+	item.Dependencies = dedupe(item.Dependencies)
 	item.FilePath = path
 	item.Body = string(body)
 
@@ -113,6 +114,25 @@ func ParseWithOptions(data []byte, path string, opts ParseOptions) (*Item, error
 	}
 
 	return &item, nil
+}
+
+// dedupe returns ids with repeats removed, keeping the first occurrence of each.
+func dedupe(ids []string) []string {
+	if len(ids) < 2 {
+		return ids
+	}
+
+	seen := make(map[string]bool, len(ids))
+	out := ids[:0]
+
+	for _, id := range ids {
+		if !seen[id] {
+			seen[id] = true
+			out = append(out, id)
+		}
+	}
+
+	return out
 }
 
 // extractHeading returns the text of the first ATX heading (h1–h3) in the body, or "".
