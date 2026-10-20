@@ -8,6 +8,7 @@
 package skill
 
 import (
+	"bytes"
 	_ "embed"
 	"fmt"
 	"os"
@@ -54,10 +55,13 @@ func Section() string {
 	return strings.Join(lines, "")
 }
 
+// skillFileName is the one file every agent installs today.
+const skillFileName = "SKILL.md"
+
 // sharedFiles is the SKILL.md payload every registered agent installs today.
 // Agents that need extra files should compose this with their own additions.
 var sharedFiles = map[string][]byte{
-	"SKILL.md": []byte(Render()),
+	skillFileName: []byte(Render()),
 }
 
 // tildeRule says whether an agent expands a leading tilde in its own config
@@ -162,22 +166,45 @@ func AgentNames() string {
 	return strings.Join(names, ", ")
 }
 
-// Exists reports whether any of the agent's files are present in dir.
-func Exists(a Agent, dir string) bool {
-	for name := range a.Files() {
-		if _, err := os.Stat(filepath.Join(dir, name)); err == nil {
-			return true
-		}
+// ownerHeader starts every file yat renders. A file without it was not
+// written by yat, so install and uninstall leave it alone.
+var ownerHeader = []byte("---\nname: " + Name + "\n")
+
+// fileState says whether name is present under dir and, if so, whether yat
+// wrote it.
+func fileState(dir, name string) (present, owned bool) {
+	data, err := os.ReadFile(filepath.Join(dir, name))
+	if err != nil {
+		return false, false
 	}
-	return false
+	return true, bytes.HasPrefix(data, ownerHeader)
 }
 
-// InstalledFiles returns the agent's files present on disk under dir,
+// Exists reports whether any of the agent's files written by yat are present
+// in dir.
+func Exists(a Agent, dir string) bool {
+	return len(InstalledFiles(a, dir)) > 0
+}
+
+// InstalledFiles returns the agent's files present under dir that yat wrote,
 // sorted for stable output.
 func InstalledFiles(a Agent, dir string) []string {
 	var found []string
 	for name := range a.Files() {
-		if _, err := os.Stat(filepath.Join(dir, name)); err == nil {
+		if present, owned := fileState(dir, name); present && owned {
+			found = append(found, name)
+		}
+	}
+	sort.Strings(found)
+	return found
+}
+
+// ForeignFiles returns the files under dir that share a name with one of the
+// agent's files but were not written by yat, sorted for stable output.
+func ForeignFiles(a Agent, dir string) []string {
+	var found []string
+	for name := range a.Files() {
+		if present, owned := fileState(dir, name); present && !owned {
 			found = append(found, name)
 		}
 	}
@@ -203,10 +230,10 @@ func Install(a Agent, dir string) error {
 	return nil
 }
 
-// Uninstall removes the agent's installed files from dir. If the directory is
-// empty afterwards, it is also removed.
+// Uninstall removes the agent's files that yat wrote from dir, leaving any
+// other file alone. If the directory is empty afterwards, it is also removed.
 func Uninstall(a Agent, dir string) error {
-	for name := range a.Files() {
+	for _, name := range InstalledFiles(a, dir) {
 		path := filepath.Join(dir, name)
 		if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
 			return err

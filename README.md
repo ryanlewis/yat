@@ -77,7 +77,7 @@ yat start TK-001     # mark as in-progress
 yat complete TK-001  # mark as done
 yat blocked          # items waiting on dependencies
 yat graph            # dependency graph by layer
-yat skill            # install the agent skill (see below)
+yat skill list       # agent skill install state (see below)
 ```
 
 ## Completing items

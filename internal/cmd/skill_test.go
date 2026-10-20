@@ -14,6 +14,9 @@ import (
 const (
 	testAgentClaude = "claude"
 	testAgentCodex  = "codex"
+
+	// oldSkill stands in for an earlier yat install: same header, old body.
+	oldSkill = "---\nname: yat\n---\nold body\n"
 )
 
 func newSkillEnv(jsonMode, interactive bool, stdin string) (env *SkillEnv, stdout, stderr *bytes.Buffer) {
@@ -56,21 +59,21 @@ func TestSkillInstall_FreshDir(t *testing.T) {
 
 func TestSkillInstall_ExistingNonInteractiveRefuses(t *testing.T) {
 	dir := t.TempDir()
-	os.WriteFile(filepath.Join(dir, "SKILL.md"), []byte("old"), 0o600)
+	os.WriteFile(filepath.Join(dir, "SKILL.md"), []byte(oldSkill), 0o600)
 	env, _, _ := newSkillEnv(false, false, "")
 
 	err := (&SkillInstallCmd{Agent: testAgentClaude, Path: dir}).Run(env)
 	if err == nil || !strings.Contains(err.Error(), "-y") {
 		t.Fatalf("expected error mentioning -y, got %v", err)
 	}
-	if got := skillFile(t, dir); got != "old" {
+	if got := skillFile(t, dir); got != oldSkill {
 		t.Error("existing install was overwritten without confirmation")
 	}
 }
 
 func TestSkillInstall_ExistingPromptDeclined(t *testing.T) {
 	dir := t.TempDir()
-	os.WriteFile(filepath.Join(dir, "SKILL.md"), []byte("old"), 0o600)
+	os.WriteFile(filepath.Join(dir, "SKILL.md"), []byte(oldSkill), 0o600)
 	env, stdout, stderr := newSkillEnv(false, true, "\n")
 
 	if err := (&SkillInstallCmd{Agent: testAgentClaude, Path: dir}).Run(env); err != nil {
@@ -82,14 +85,14 @@ func TestSkillInstall_ExistingPromptDeclined(t *testing.T) {
 	if !strings.Contains(stdout.String(), "Aborted.") {
 		t.Errorf("expected Aborted., got: %s", stdout)
 	}
-	if got := skillFile(t, dir); got != "old" {
+	if got := skillFile(t, dir); got != oldSkill {
 		t.Error("declined prompt still overwrote the install")
 	}
 }
 
 func TestSkillInstall_ExistingPromptAccepted(t *testing.T) {
 	dir := t.TempDir()
-	os.WriteFile(filepath.Join(dir, "SKILL.md"), []byte("old"), 0o600)
+	os.WriteFile(filepath.Join(dir, "SKILL.md"), []byte(oldSkill), 0o600)
 	env, _, _ := newSkillEnv(false, true, "y\n")
 
 	if err := (&SkillInstallCmd{Agent: testAgentCodex, Path: dir}).Run(env); err != nil {
@@ -102,7 +105,7 @@ func TestSkillInstall_ExistingPromptAccepted(t *testing.T) {
 
 func TestSkillInstall_JSONNeverPrompts(t *testing.T) {
 	dir := t.TempDir()
-	os.WriteFile(filepath.Join(dir, "SKILL.md"), []byte("old"), 0o600)
+	os.WriteFile(filepath.Join(dir, "SKILL.md"), []byte(oldSkill), 0o600)
 	env, _, stderr := newSkillEnv(true, true, "y\n")
 
 	if err := (&SkillInstallCmd{Agent: testAgentClaude, Path: dir}).Run(env); err == nil {
@@ -115,7 +118,7 @@ func TestSkillInstall_JSONNeverPrompts(t *testing.T) {
 
 func TestSkillInstall_YesJSON(t *testing.T) {
 	dir := t.TempDir()
-	os.WriteFile(filepath.Join(dir, "SKILL.md"), []byte("old"), 0o600)
+	os.WriteFile(filepath.Join(dir, "SKILL.md"), []byte(oldSkill), 0o600)
 	env, stdout, _ := newSkillEnv(true, false, "")
 
 	if err := (&SkillInstallCmd{Agent: "pi", Path: dir, Yes: true}).Run(env); err != nil {
@@ -141,7 +144,7 @@ func TestSkillInstall_UnknownAgent(t *testing.T) {
 
 func TestSkillUninstall_NonInteractiveRefuses(t *testing.T) {
 	dir := t.TempDir()
-	os.WriteFile(filepath.Join(dir, "SKILL.md"), []byte("x"), 0o600)
+	os.WriteFile(filepath.Join(dir, "SKILL.md"), []byte(oldSkill), 0o600)
 	env, _, _ := newSkillEnv(false, false, "")
 
 	if err := (&SkillUninstallCmd{Agent: testAgentClaude, Path: dir}).Run(env); err == nil {
@@ -155,7 +158,7 @@ func TestSkillUninstall_NonInteractiveRefuses(t *testing.T) {
 func TestSkillUninstall_PromptListsFiles(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "yat")
 	os.Mkdir(dir, 0o750)
-	os.WriteFile(filepath.Join(dir, "SKILL.md"), []byte("x"), 0o600)
+	os.WriteFile(filepath.Join(dir, "SKILL.md"), []byte(oldSkill), 0o600)
 	env, stdout, stderr := newSkillEnv(false, true, "yes\n")
 
 	if err := (&SkillUninstallCmd{Agent: testAgentClaude, Path: dir}).Run(env); err != nil {
@@ -174,7 +177,7 @@ func TestSkillUninstall_PromptListsFiles(t *testing.T) {
 
 func TestSkillUninstall_KeepsUnrelatedFiles(t *testing.T) {
 	dir := t.TempDir()
-	os.WriteFile(filepath.Join(dir, "SKILL.md"), []byte("x"), 0o600)
+	os.WriteFile(filepath.Join(dir, "SKILL.md"), []byte(oldSkill), 0o600)
 	os.WriteFile(filepath.Join(dir, "notes.md"), []byte("keep"), 0o600)
 	env, stdout, _ := newSkillEnv(true, false, "")
 
@@ -253,7 +256,7 @@ func TestSkillList_JSON(t *testing.T) {
 
 	claudeDir := filepath.Join(home, ".claude", "skills", "yat")
 	os.MkdirAll(claudeDir, 0o750)
-	os.WriteFile(filepath.Join(claudeDir, "SKILL.md"), []byte("x"), 0o600)
+	os.WriteFile(filepath.Join(claudeDir, "SKILL.md"), []byte(oldSkill), 0o600)
 
 	env, stdout, _ := newSkillEnv(true, false, "")
 	if err := (&SkillListCmd{}).Run(env); err != nil {
@@ -275,5 +278,20 @@ func TestSkillList_JSON(t *testing.T) {
 	}
 	if rows[0].Dir != claudeDir {
 		t.Errorf("claude dir = %q, want %q", rows[0].Dir, claudeDir)
+	}
+}
+
+func TestSkillInstall_ForeignFileRefusedEvenWithYes(t *testing.T) {
+	dir := t.TempDir()
+	foreign := "---\nname: other\n---\n"
+	os.WriteFile(filepath.Join(dir, "SKILL.md"), []byte(foreign), 0o600)
+	env, _, _ := newSkillEnv(false, false, "")
+
+	err := (&SkillInstallCmd{Agent: testAgentClaude, Path: dir, Yes: true}).Run(env)
+	if err == nil || !strings.Contains(err.Error(), "not written by yat") {
+		t.Fatalf("expected refusal, got %v", err)
+	}
+	if got := skillFile(t, dir); got != foreign {
+		t.Error("foreign SKILL.md was overwritten")
 	}
 }

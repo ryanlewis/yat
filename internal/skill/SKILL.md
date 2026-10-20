@@ -4,7 +4,7 @@ yat is a CLI issue tracker. Items (stories, tasks, spikes) are Markdown files wi
 
 ## Safety
 
-- **Safe to run freely**: `yat status`, `yat next`, `yat ready`, `yat show <id>`, `yat blocked`, `yat list`, `yat graph`, `yat skill list`, `yat skill show`. They only read item files.
+- **Safe to run freely**: `yat status`, `yat next`, `yat ready`, `yat show <id>`, `yat blocked`, `yat list`, `yat graph` only read item files. `yat skill list` and `yat skill show` write nothing.
 - **Writes change item files in place**: `yat start <id>` and `yat complete <id>` rewrite the item's `status` field and keep the rest of the file as it was.
 - **Read-only projects**: when `.yat.yaml` has `readonly: true`, `start` and `complete` fail with `project is read-only (readonly: true in .yat.yaml)`. This is expected, not a fault. Do the work the item describes and skip the status update. Do not edit the config or the item's frontmatter to get around it.
 - `yat init` creates `.yat.yaml`, an items directory and an example item, and can append these instructions to `CLAUDE.md` / `AGENTS.md`. Run it only when asked.
@@ -78,7 +78,7 @@ yat blocked --json | jq -r '.[] | "\(.id) waits on \(.waiting_on | join(", "))"'
 
 ## Errors to expect
 
-- `items directory "spec" not found` — there is no items directory where yat looked. Run `yat init` to create a project (only if asked), or pass `--dir <path>` to point at an existing one.
+- `items directory "spec" not found.` (followed by a hint to run `yat init`) — there is no items directory where yat looked. Run `yat init` to create a project (only if asked), or pass `--dir <path>` to point at an existing one.
 - `project is read-only (readonly: true in .yat.yaml)` — see Safety: do the work, skip the status update.
 - `item "<id>" not found` — check the ID with `yat list --json`. IDs are matched exactly.
 - `cannot start <id>: blocked by <ids>` — finish the listed items first, or ask which to do.
