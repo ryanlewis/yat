@@ -1,0 +1,290 @@
+package cmd
+
+import (
+	"bytes"
+	"encoding/json"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	"github.com/ryanlewis/yat/internal/config"
+)
+
+// newAddContext loads dir with cfg and captures output.
+func newAddContext(t *testing.T, dir string, cfg *config.Config, jsonMode bool) (*RunContext, *bytes.Buffer) {
+	t.Helper()
+
+	rc, err := NewRunContext(dir, jsonMode, cfg)
+	if err != nil {
+		t.Fatalf("NewRunContext: %v", err)
+	}
+
+	var buf bytes.Buffer
+	rc.Stdout = &buf
+
+	return rc, &buf
+}
+
+// addTestDir holds tasks in tasks/ (TK-, three digits) and a story at the root.
+func addTestDir(t *testing.T) string {
+	t.Helper()
+
+	dir := t.TempDir()
+	if err := os.Mkdir(filepath.Join(dir, "tasks"), 0o750); err != nil {
+		t.Fatal(err)
+	}
+
+	writeItemFile(t, dir, "tasks/TK-002.md", "---\nid: TK-002\ntype: Task\nstatus: todo\n---\n")
+	writeItemFile(t, dir, "tasks/TK-006.md", "---\nid: TK-006\ntype: Task\nstatus: done\n---\n")
+	writeItemFile(t, dir, "ST-01.md", "---\nid: ST-01\ntype: Story\nstatus: todo\n---\n")
+
+	return dir
+}
+
+func runAdd(t *testing.T, rc *RunContext, a *AddCmd) {
+	t.Helper()
+
+	if a.stdin == nil {
+		a.stdin = strings.NewReader("")
+	}
+
+	if err := a.Run(rc); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+}
+
+func readFile(t *testing.T, path string) string {
+	t.Helper()
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	return string(data)
+}
+
+func TestAddCmd_NextIDAndFolderForType(t *testing.T) {
+	dir := addTestDir(t)
+	rc, buf := newAddContext(t, dir, defaultConfig(), false)
+
+	runAdd(t, rc, &AddCmd{Title: "Write the docs", Type: "Task", Priority: "high", Dep: []string{"TK-002"}, Points: 2})
+
+	path := filepath.Join(dir, "tasks", "TK-007-write-the-docs.md")
+	want := "---\nid: TK-007\ntitle: Write the docs\ntype: Task\npriority: High\npoints: 2\n" +
+		"dependencies: [TK-002]\nstatus: todo\n---\n"
+
+	if got := readFile(t, path); got != want {
+		t.Errorf("file =\n%s\nwant\n%s", got, want)
+	}
+
+	if got := buf.String(); got != "Added TK-007 at "+path+"\n" {
+		t.Errorf("output = %q", got)
+	}
+
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if info.Mode().Perm() != 0o600 {
+		t.Errorf("mode = %v, want 0600", info.Mode().Perm())
+	}
+
+	// The new item loads with the rest.
+	rc2, _ := newAddContext(t, dir, defaultConfig(), false)
+	if it, ok := rc2.Graph.Item("TK-007"); !ok || it.Title != "Write the docs" {
+		t.Errorf("TK-007 did not load back: %+v", it)
+	}
+}
+
+func TestAddCmd_KeepsPaddingWidth(t *testing.T) {
+	dir := addTestDir(t)
+	rc, _ := newAddContext(t, dir, defaultConfig(), false)
+
+	runAdd(t, rc, &AddCmd{Title: "Second story", Type: "story"})
+
+	if _, err := os.Stat(filepath.Join(dir, "ST-02-second-story.md")); err != nil {
+		t.Errorf("expected ST-02 at the items root: %v", err)
+	}
+}
+
+func TestAddCmd_Prefix(t *testing.T) {
+	dir := addTestDir(t)
+	rc, _ := newAddContext(t, dir, defaultConfig(), false)
+
+	runAdd(t, rc, &AddCmd{Title: "New thing", Type: "Bug", Prefix: "BG-"})
+
+	if _, err := os.Stat(filepath.Join(dir, "BG-001-new-thing.md")); err != nil {
+		t.Errorf("expected BG-001 at the items root: %v", err)
+	}
+}
+
+func TestAddCmd_NoPrefixToInfer(t *testing.T) {
+	dir := addTestDir(t)
+	rc, _ := newAddContext(t, dir, defaultConfig(), false)
+
+	err := (&AddCmd{Title: "x", Type: "Bug", stdin: strings.NewReader("")}).Run(rc)
+	if err == nil || !strings.Contains(err.Error(), "--prefix") {
+		t.Errorf("expected a hint to pass --prefix, got: %v", err)
+	}
+}
+
+func TestAddCmd_ExplicitID(t *testing.T) {
+	dir := addTestDir(t)
+	rc, _ := newAddContext(t, dir, defaultConfig(), false)
+
+	err := (&AddCmd{Title: "x", ID: "TK-006", stdin: strings.NewReader("")}).Run(rc)
+	if err == nil || !strings.Contains(err.Error(), "already exists") {
+		t.Errorf("expected an existing id to be refused, got: %v", err)
+	}
+
+	err = (&AddCmd{Title: "x", ID: "../x", stdin: strings.NewReader("")}).Run(rc)
+	if err == nil || !strings.Contains(err.Error(), "invalid id") {
+		t.Errorf("expected a path in the id to be refused, got: %v", err)
+	}
+
+	runAdd(t, rc, &AddCmd{Title: "Custom", ID: "MY-ID"})
+
+	if _, err := os.Stat(filepath.Join(dir, "MY-ID-custom.md")); err != nil {
+		t.Errorf("expected MY-ID-custom.md: %v", err)
+	}
+}
+
+func TestAddCmd_RefusesOverwrite(t *testing.T) {
+	dir := addTestDir(t)
+	writeItemFile(t, dir, "tasks/TK-007-dup.md", "not an item\n")
+	rc, _ := newAddContext(t, dir, defaultConfig(), false)
+
+	err := (&AddCmd{Title: "Dup", Type: "Task", stdin: strings.NewReader("")}).Run(rc)
+	if err == nil || !strings.Contains(err.Error(), "refusing to overwrite") {
+		t.Fatalf("expected refusal, got: %v", err)
+	}
+
+	if got := readFile(t, filepath.Join(dir, "tasks", "TK-007-dup.md")); got != "not an item\n" {
+		t.Errorf("existing file changed: %q", got)
+	}
+
+	entries, _ := os.ReadDir(filepath.Join(dir, "tasks"))
+	for _, e := range entries {
+		if strings.HasSuffix(e.Name(), ".tmp") {
+			t.Errorf("temp file left behind: %s", e.Name())
+		}
+	}
+}
+
+func TestAddCmd_ReadOnly(t *testing.T) {
+	dir := addTestDir(t)
+	cfg := defaultConfig()
+	cfg.ReadOnly = true
+	rc, _ := newAddContext(t, dir, cfg, false)
+
+	err := (&AddCmd{Title: "x", Type: "Task"}).Run(rc)
+	if err == nil || err.Error() != "project is read-only (readonly: true in .yat.yaml)" {
+		t.Errorf("expected read-only error, got: %v", err)
+	}
+}
+
+func TestAddCmd_Validation(t *testing.T) {
+	for name, a := range map[string]*AddCmd{
+		"empty title":      {Title: "  ", Type: "Task"},
+		"bad priority":     {Title: "x", Type: "Task", Priority: "urgent"},
+		"bad status":       {Title: "x", Type: "Task", Status: "bogus"},
+		"unknown dep":      {Title: "x", Type: "Task", Dep: []string{"NOPE"}},
+		"negative points":  {Title: "x", Type: "Task", Points: -1},
+		"prefix with path": {Title: "x", Prefix: "a/b-"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			dir := addTestDir(t)
+			rc, _ := newAddContext(t, dir, defaultConfig(), false)
+			a.stdin = strings.NewReader("")
+
+			if err := a.Run(rc); err == nil {
+				t.Error("expected an error")
+			}
+		})
+	}
+}
+
+func TestAddCmd_BodyFromStdin(t *testing.T) {
+	dir := addTestDir(t)
+	rc, _ := newAddContext(t, dir, defaultConfig(), false)
+
+	runAdd(t, rc, &AddCmd{Title: "Piped", Type: "Task", stdin: strings.NewReader("Do the thing")})
+
+	got := readFile(t, filepath.Join(dir, "tasks", "TK-007-piped.md"))
+	if !strings.HasSuffix(got, "---\n\nDo the thing\n") {
+		t.Errorf("body not written from stdin:\n%s", got)
+	}
+
+	runAdd(t, rc, &AddCmd{Title: "Flag", ID: "F-1", Body: "From flag", stdin: strings.NewReader("ignored")})
+
+	if got := readFile(t, filepath.Join(dir, "F-1-flag.md")); !strings.HasSuffix(got, "\nFrom flag\n") {
+		t.Errorf("--body not used:\n%s", got)
+	}
+}
+
+func TestAddCmd_JSON(t *testing.T) {
+	dir := addTestDir(t)
+	rc, buf := newAddContext(t, dir, defaultConfig(), true)
+
+	runAdd(t, rc, &AddCmd{Title: "Json", Type: "Task", Phase: "1", Body: "b"})
+
+	var got addJSON
+	if err := json.Unmarshal(buf.Bytes(), &got); err != nil {
+		t.Fatalf("invalid JSON: %v\n%s", err, buf.String())
+	}
+
+	want := addJSON{
+		ID: "TK-007", Path: filepath.Join(dir, "tasks", "TK-007-json.md"), Title: "Json", Type: "Task",
+		Dependencies: []string{}, Status: "todo", Phase: "1", Body: "b\n",
+	}
+	if got.ID != want.ID || got.Path != want.Path || got.Status != want.Status || got.Phase != want.Phase ||
+		got.Body != want.Body || got.Dependencies == nil {
+		t.Errorf("got %+v, want %+v", got, want)
+	}
+}
+
+func TestAddCmd_FieldAliasesAndCustomStatus(t *testing.T) {
+	dir := t.TempDir()
+	writeItemFile(t, dir, "TK-001.md", "---\nkey: TK-001\ntype: Task\nstate: backlog\n---\n")
+
+	cfg := &config.Config{
+		Statuses:     customStatuses(),
+		FieldAliases: map[string]string{"id": "key", "status": "state"},
+	}
+	rc, _ := newAddContext(t, dir, cfg, false)
+
+	runAdd(t, rc, &AddCmd{Title: "Aliased", Type: "Task"})
+
+	want := "---\nkey: TK-002\ntitle: Aliased\ntype: Task\nstate: backlog\n---\n"
+	if got := readFile(t, filepath.Join(dir, "TK-002-aliased.md")); got != want {
+		t.Errorf("file =\n%s\nwant\n%s", got, want)
+	}
+}
+
+func TestAddCmd_AliasCollision(t *testing.T) {
+	dir := addTestDir(t)
+	cfg := defaultConfig()
+	cfg.FieldAliases = map[string]string{"phase": "status"}
+	rc, _ := newAddContext(t, dir, cfg, false)
+
+	err := (&AddCmd{Title: "x", Type: "Task", Phase: "1", stdin: strings.NewReader("")}).Run(rc)
+	if err == nil || !strings.Contains(err.Error(), "field_aliases") {
+		t.Errorf("expected a field_aliases error, got: %v", err)
+	}
+}
+
+func TestSlugify(t *testing.T) {
+	for in, want := range map[string]string{
+		"Fix: the  login bug!":    "fix-the-login-bug",
+		"ünïcode":                 "n-code",
+		"---":                     "",
+		strings.Repeat("ab ", 30): strings.Repeat("ab-", 16) + "ab",
+	} {
+		if got := slugify(in); got != want {
+			t.Errorf("slugify(%q) = %q, want %q", in, got, want)
+		}
+	}
+}

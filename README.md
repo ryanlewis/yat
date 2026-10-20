@@ -65,6 +65,8 @@ phase: "1"
 - [ ] Tests must pass before merge
 ```
 
+You can write items by hand or create them with `yat add` (see [Adding items](#adding-items)).
+
 Then use `yat` to track progress:
 
 ```sh
@@ -73,12 +75,29 @@ yat list             # all items grouped by status
 yat ready            # items with all dependencies met
 yat next             # highest-priority ready item
 yat show TK-001      # full details of an item
+yat add "Fix login" --type Task  # create an item (TK-002 after TK-001)
 yat start TK-001     # mark as in-progress
 yat complete TK-001  # mark as done
 yat blocked          # items waiting on dependencies
 yat graph            # dependency graph by layer
 yat skill list       # agent skill install state (see below)
 ```
+
+## Adding items
+
+`yat add` creates an item file:
+
+```sh
+yat add "Write integration tests" --type Task --priority High --dep TK-001
+# Added TK-002 at spec/tasks/TK-002-write-integration-tests.md
+```
+
+- **ID**: the next number for the prefix that existing items of the same `--type` use, keeping their zero-padding (`TK-007` after `TK-006`). `--prefix BG-` numbers from another prefix (`BG-001` if none exist yet). `--id` sets the id exactly; an id that already exists is an error. If no prefix can be inferred, pass `--prefix` or `--id`.
+- **Location**: `<ID>-<slug>.md`, where the slug is the title in lowercase ASCII with hyphens. The file goes in the folder where most items of that type live, or the items directory root if there are none. An existing file is never overwritten.
+- **Fields**: `--type`, `--priority`, `--points`, `--dep` (repeatable), `--phase`, and `--status` (default: the first `initial` status, `todo` unless configured). Keys follow `field_aliases`.
+- **Body**: `--body "..."`, or piped in (`cat notes.md | yat add "Title"`). Otherwise the body is empty.
+
+`yat add` is refused when the project is `readonly`.
 
 ## Completing items
 

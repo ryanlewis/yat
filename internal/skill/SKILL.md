@@ -6,7 +6,8 @@ yat is a CLI issue tracker. Items (stories, tasks, spikes) are Markdown files wi
 
 - **Safe to run freely**: `yat status`, `yat next`, `yat ready`, `yat show <id>`, `yat blocked`, `yat list`, `yat graph` only read item files. `yat skill list` and `yat skill show` write nothing.
 - **Writes change item files in place**: `yat start <id>` and `yat complete <id>` rewrite the item's `status` field and keep the rest of the file as it was.
-- **Read-only projects**: when `.yat.yaml` has `readonly: true`, `start` and `complete` fail with `project is read-only (readonly: true in .yat.yaml)`. This is expected, not a fault. Do the work the item describes and skip the status update. Do not edit the config or the item's frontmatter to get around it.
+- **`yat add "<title>"` creates a new item file** and never overwrites one. Run it when asked to record new work.
+- **Read-only projects**: when `.yat.yaml` has `readonly: true`, `add`, `start` and `complete` fail with `project is read-only (readonly: true in .yat.yaml)`. This is expected, not a fault. Do the work the item describes and skip the status update. Do not edit the config or the item's frontmatter to get around it.
 - `yat init` creates `.yat.yaml`, an items directory and an example item, and can append a short pointer to this skill to `CLAUDE.md` / `AGENTS.md`. Run it only when asked.
 - `yat skill install` / `yat skill uninstall` write to the agent's config directory. Do not run them unasked.
 
@@ -29,6 +30,7 @@ Let `yat next` choose rather than picking items yourself. It respects priority (
 | `yat next` | The highest-priority ready item, including its body. |
 | `yat ready` | Every item ready to work on. `-a` / `--all` also lists in-progress items. |
 | `yat show <id>` | Full details and body of one item. |
+| `yat add "<title>"` | Create an item. Flags: `--type`, `--priority`, `--points`, `--dep <id>` (repeatable), `--phase`, `--status`, `--body`, `--id`, `--prefix`. Writes. |
 | `yat start <id>` | Mark an item in progress. Writes. |
 | `yat complete <id>` | Mark an item done and report what it unblocked. Writes. |
 | `yat blocked` | Items that cannot start yet, and what each waits on. |
@@ -46,6 +48,7 @@ Always pass `--json` when you parse output. The shapes you will use most:
 - `yat next --json` — `{"id", "title", "priority", "type", "points", "phase", "file_path", "body"}`, or `null` when nothing is ready.
 - `yat ready --json` — `[{"id", "priority", "type", "status", "title"}]`.
 - `yat show <id> --json` — the item, including `dependencies`, `status` and `body`.
+- `yat add "<title>" --json` — `{"id", "path", "title", "type", "priority", "points", "dependencies", "status", "phase", "body"}`.
 - `yat complete <id> --json` — `{"id", "title", "unblocked": [{"id", "title"}], "still_blocked": [{"id", "title", "waiting_on"}]}`.
 - `yat blocked --json` — `[{"id", "title", "waiting_on": [ids]}]`.
 - `yat graph --json` — `{"layers": [[ids]], "edges": [{"from", "to"}]}`.
@@ -71,6 +74,14 @@ yat start "$id"
 yat complete "$id" --json | jq -r '.unblocked[].id'
 ```
 
+Record new work that depends on an existing item:
+
+```sh
+id=$(yat add "Write the migration" --type Task --dep TK-004 --body "Details..." --json | jq -r '.id')
+```
+
+The id is the next number for the prefix items of that `--type` use (`TK-007` after `TK-006`). The body comes from `--body`, or from stdin when it is piped in.
+
 See what is ready and what is stuck:
 
 ```sh
@@ -82,6 +93,9 @@ yat blocked --json | jq -r '.[] | "\(.id) waits on \(.waiting_on | join(", "))"'
 
 - `items directory "spec" not found.` (followed by a hint to run `yat init`) — there is no items directory where yat looked. Run `yat init` to create a project (only if asked), or pass `--dir <path>` to point at an existing one.
 - `project is read-only (readonly: true in .yat.yaml)` — see Safety: do the work, skip the status update.
+- `cannot pick an id: no items of type "<type>" have a numbered id; pass --prefix (e.g. --prefix TK-) or --id` — `yat add` has nothing to number from. Pass `--prefix` or `--id`.
+- `item "<id>" already exists` / `refusing to overwrite <file>` — `yat add` would collide with an existing item or file. Choose another `--id`.
+- `dependency "<id>" not found` — a `--dep` names no item. Check it with `yat list --json`.
 - `item "<id>" not found` — check the ID with `yat list --json`. IDs are matched exactly.
 - `cannot start <id>: blocked by <ids>` — finish the listed items first, or ask which to do.
 - `item <id> is already done` — nothing to do; move on with `yat next`.

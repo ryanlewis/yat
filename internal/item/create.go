@@ -1,0 +1,87 @@
+package item
+
+import (
+	"errors"
+	"fmt"
+	"io/fs"
+	"os"
+	"path/filepath"
+)
+
+// ErrFileExists is returned by CreateFile when a file is already at the path.
+var ErrFileExists = errors.New("file already exists")
+
+// CreateFile writes data to a new file at path with mode perm, refusing to
+// replace a file that is already there. Like writeFileAtomic it writes a hidden
+// temp file next to the file first (LoadAll never picks it up), so a crash or a
+// full disk never leaves a partial file at path.
+func CreateFile(path string, data []byte, perm fs.FileMode) error {
+	dir := filepath.Dir(path)
+
+	tmp, err := os.CreateTemp(dir, "."+filepath.Base(path)+".*.tmp")
+	if err != nil {
+		return err
+	}
+
+	tmpName := tmp.Name()
+	defer os.Remove(tmpName) // path keeps the data once linked
+
+	if err = writeNew(tmp, data, perm); err != nil {
+		_ = tmp.Close()
+
+		return err
+	}
+
+	// Link, unlike Rename, fails when path exists, so a file is never replaced.
+	err = os.Link(tmpName, path)
+
+	switch {
+	case err == nil:
+		syncDir(dir)
+
+		return nil
+	case errors.Is(err, fs.ErrExist):
+		return fmt.Errorf("%w: %s", ErrFileExists, path)
+	default:
+		// The filesystem may not support hard links; write the file directly.
+		return createExclusive(path, data, perm)
+	}
+}
+
+// writeNew writes data to f, gives it mode perm, syncs it to disk and closes it.
+func writeNew(f *os.File, data []byte, perm fs.FileMode) error {
+	if _, err := f.Write(data); err != nil {
+		return err
+	}
+
+	if err := f.Chmod(perm); err != nil {
+		return err
+	}
+
+	if err := f.Sync(); err != nil {
+		return err
+	}
+
+	return f.Close()
+}
+
+// createExclusive writes data to a new file at path, failing if one exists.
+func createExclusive(path string, data []byte, perm fs.FileMode) error {
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, perm)
+	if err != nil {
+		if errors.Is(err, fs.ErrExist) {
+			return fmt.Errorf("%w: %s", ErrFileExists, path)
+		}
+
+		return err
+	}
+
+	if err := writeNew(f, data, perm); err != nil {
+		_ = f.Close()
+		_ = os.Remove(path)
+
+		return err
+	}
+
+	return nil
+}

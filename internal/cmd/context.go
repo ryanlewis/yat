@@ -30,6 +30,9 @@ type RunContext struct {
 	// statusIsAlias is set when another field is aliased to "status", so a
 	// status key in a file holds that field, not the status.
 	statusIsAlias bool
+
+	// fieldAliases maps canonical field names to the keys item files use.
+	fieldAliases map[string]string
 }
 
 // statusKey is the canonical frontmatter key for an item's status.
@@ -97,6 +100,7 @@ func NewRunContext(dir string, jsonOutput bool, cfg *config.Config) (*RunContext
 		StatusField: statusField,
 
 		statusIsAlias: statusIsAlias,
+		fieldAliases:  cfg.FieldAliases,
 	}, nil
 }
 
