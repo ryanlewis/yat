@@ -141,14 +141,24 @@ func dedupe(ids []string) []string {
 
 // extractHeading returns the text of the first ATX heading (h1–h3) in the body, or "".
 // Headings inside fenced code blocks (``` or ~~~) and indented code are ignored.
+// Indent is measured from the content column of any list item the line sits
+// under, so a heading indented under "- step" still counts.
 func extractHeading(body []byte) string {
-	var fence []byte // marker of the open fence, nil outside one
+	var (
+		fence []byte // marker of the open fence, nil outside one
+		lists []int  // content columns of the open list items, innermost last
+	)
 
 	for _, line := range bytes.Split(body, []byte("\n")) {
 		trimmed := bytes.TrimSpace(line)
 
+		var indent int
+		if len(trimmed) > 0 {
+			lists, indent = listIndent(lists, indentWidth(line))
+		}
+
 		// Four columns of indent make a code line: never a heading or a fence.
-		if len(trimmed) > 0 && indentWidth(line) >= codeIndent {
+		if indent >= codeIndent {
 			continue
 		}
 
@@ -163,6 +173,11 @@ func extractHeading(body []byte) string {
 		}
 
 		if fence = fenceMarker(trimmed); fence != nil {
+			continue
+		}
+
+		if n := listMarkerWidth(trimmed); n > 0 {
+			lists = append(lists, indentWidth(line)+n)
 			continue
 		}
 
@@ -201,6 +216,68 @@ func fenceMarker(line []byte) []byte {
 	}
 
 	return line[:n]
+}
+
+// listIndent closes the list items in lists that a non-blank line at indent
+// columns falls outside, and returns the rest and the line's indent from the
+// content column of the innermost item still open.
+func listIndent(lists []int, indent int) (open []int, rel int) {
+	for len(lists) > 0 && indent < lists[len(lists)-1] {
+		lists = lists[:len(lists)-1]
+	}
+
+	if len(lists) > 0 {
+		indent -= lists[len(lists)-1]
+	}
+
+	return lists, indent
+}
+
+// maxOrderedDigits is the most digits an ordered list marker can have.
+const maxOrderedDigits = 9
+
+// listMarker returns the length of the list marker (-, *, + or 1. / 1)) that
+// line starts with, or 0.
+func listMarker(line []byte) int {
+	if len(line) > 0 && (line[0] == '-' || line[0] == '*' || line[0] == '+') {
+		return 1
+	}
+
+	n := 0
+	for n < len(line) && n < maxOrderedDigits && line[n] >= '0' && line[n] <= '9' {
+		n++
+	}
+
+	if n > 0 && n < len(line) && (line[n] == '.' || line[n] == ')') {
+		return n + 1
+	}
+
+	return 0
+}
+
+// listMarkerWidth returns the columns from the start of a list item's marker
+// to its content, or 0 when line does not start a list item.
+func listMarkerWidth(line []byte) int {
+	n := listMarker(line)
+	if n == 0 {
+		return 0
+	}
+
+	if n == len(line) {
+		return n + 1 // an empty item: its content starts one column on
+	}
+
+	if line[n] != ' ' && line[n] != '\t' {
+		return 0
+	}
+
+	// One to four columns of space follow the marker; with five or more, the
+	// content starts after one and the rest is indented code.
+	if gap := indentWidth(line[n:]); gap <= codeIndent {
+		return n + gap
+	}
+
+	return n + 1
 }
 
 // codeIndent is the indent, in columns, at which a line becomes indented code.
