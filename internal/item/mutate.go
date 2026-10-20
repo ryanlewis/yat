@@ -425,7 +425,7 @@ func fieldHolds(fm []byte, fieldName string, want Status) bool {
 	pairs := doc.Content[0].Content
 
 	for i := 0; i+1 < len(pairs); i += 2 {
-		if pairs[i].Value != fieldName {
+		if keyName(pairs[i]) != fieldName {
 			continue
 		}
 
