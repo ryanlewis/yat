@@ -3,10 +3,13 @@ package main
 import (
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/alecthomas/kong"
 	"github.com/ryanlewis/yat/internal/cmd"
 	"github.com/ryanlewis/yat/internal/config"
+	"github.com/ryanlewis/yat/internal/skill"
+	"golang.org/x/term"
 )
 
 type cli struct {
@@ -26,7 +29,8 @@ type cli struct {
 	List     cmd.ListCmd     `cmd:"" help:"List all items grouped by status."`
 	Status   cmd.StatusCmd   `cmd:"" help:"Show an overview of all items."`
 	Graph    cmd.GraphCmd    `cmd:"" help:"Show the dependency graph."`
-	Agents   cmd.AgentsCmd   `cmd:"" help:"Print a usage guide for AI agents."`
+	Agents   cmd.AgentsCmd   `cmd:"" help:"Print the agent skill (alias for 'skill show')."`
+	Skill    cmd.SkillCmd    `cmd:"" help:"Manage the bundled agent skill (Claude Code, Codex, Pi)."`
 }
 
 func main() {
@@ -39,6 +43,7 @@ func main() {
 			"Non-item markdown files are silently skipped.\n"+
 			"Add \"yat: ignore\" to frontmatter to explicitly exclude a file."),
 		kong.UsageOnError(),
+		kong.Vars{"skill_agents": skill.AgentNames()},
 	)
 
 	if ctx.Command() == "init" || ctx.Command() == "init <dir>" {
@@ -49,8 +54,16 @@ func main() {
 		os.Exit(0)
 	}
 
-	if ctx.Command() == "agents" {
-		if err := c.Agents.Run(); err != nil {
+	// agents and skill need no project, so they run before config loading.
+	if ctx.Command() == "agents" || strings.HasPrefix(ctx.Command(), "skill ") {
+		env := &cmd.SkillEnv{
+			JSON:        c.JSON,
+			Interactive: term.IsTerminal(int(os.Stdin.Fd())),
+			Stdout:      os.Stdout,
+			Stderr:      os.Stderr,
+			Stdin:       os.Stdin,
+		}
+		if err := ctx.Run(env); err != nil {
 			fmt.Fprintf(os.Stderr, "error: %v\n", err)
 			os.Exit(1)
 		}

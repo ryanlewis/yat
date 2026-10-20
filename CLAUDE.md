@@ -34,13 +34,16 @@ internal/
     graph.go         Build, Ready, ReadyAll, Blocked, WaitingOn, UnblockedBy, cycle detection
   config/            Project config file loading (.yat.yaml / .yat.local.yaml)
     config.go        Load with directory traversal, tilde expansion
+  skill/             Bundled agent skill (embedded SKILL.md) and per-agent install adapters
+    skill.go         Name/Description constants, Render, registry, Install/Uninstall/Exists
+    SKILL.md         Skill body, go:embed-ed; also what `yat agents` and `yat init` write
   cmd/               One file per command, all implement Run(*RunContext) error
     context.go       RunContext: loads items, builds graph, shared by all commands
 ```
 
 **Data flow:** `main.go` → `cmd.NewRunContext(dir)` → `item.LoadAll(dir)` → `graph.Build(items)` → command `.Run(rc)`.
 
-`init` and `agents` are special-cased in `main.go` — they run before config loading and bypass `RunContext` entirely.
+`init`, `agents` and `skill` are special-cased in `main.go` — they run before config loading and bypass `RunContext` entirely.
 
 Every command supports text and `--json` output modes. Text goes through `tabwriter`; JSON through `encoding/json`.
 
@@ -69,3 +72,4 @@ Resolution order for the items directory: `--dir` flag / `YAT_DIR` env → confi
 - The `--dir` flag (env `YAT_DIR`, default `spec`) points to the items directory.
 - Linting: golangci-lint (see `.golangci.yml`). Max line length 120, cyclomatic complexity 15, cognitive complexity 20.
 - All new CLI output must support `--json` mode.
+- Update `internal/skill/SKILL.md` whenever a command's surface changes (added, removed or renamed commands, flags, JSON fields, error messages). The skill ships inside the binary and drifts silently otherwise.
