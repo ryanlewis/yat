@@ -235,3 +235,26 @@ func TestListCmd_PhaseActiveNoPhases_JSON(t *testing.T) {
 		t.Errorf("expected empty array, got %d items", len(result))
 	}
 }
+
+func TestListCmd_TypeColumnOneLine(t *testing.T) {
+	items := []*item.Item{
+		{ID: "A-1", Title: "One", Type: "Ta\nsk\x1b[31m", Priority: item.PriorityHigh, Status: item.StatusTodo},
+		{ID: "A-2", Title: "Two", Type: "Spike", Priority: item.PriorityHigh, Status: item.StatusTodo},
+	}
+	rc, buf := newTestContext(t, items, false)
+
+	if err := (&ListCmd{}).Run(rc); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+
+	lines := strings.Split(strings.TrimRight(buf.String(), "\n"), "\n")
+	if len(lines) != 3 {
+		t.Fatalf("expected 3 lines, got %d:\n%q", len(lines), buf.String())
+	}
+	if strings.ContainsRune(buf.String(), '\x1b') {
+		t.Errorf("escape character leaked:\n%q", buf.String())
+	}
+	if !strings.Contains(lines[1], "Ta sk[31m") {
+		t.Errorf("expected cleaned type, got %q", lines[1])
+	}
+}

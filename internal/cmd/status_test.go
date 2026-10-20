@@ -96,3 +96,10 @@ func TestPluralizeType(t *testing.T) {
 		}
 	}
 }
+
+func TestFormatTypeCounts_OneLine(t *testing.T) {
+	got := formatTypeCounts(map[string]int{"Ep\nic\x1b": 2})
+	if len(got) != 1 || got[0] != "2 ep ics" {
+		t.Errorf("got %q", got)
+	}
+}

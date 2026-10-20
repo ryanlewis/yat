@@ -252,7 +252,7 @@ func formatTypeCounts(byType map[string]int) []string {
 		}
 
 		if !found {
-			parts = append(parts, fmt.Sprintf("%d %s", c, pluralizeType(t)))
+			parts = append(parts, fmt.Sprintf("%d %s", c, pluralizeType(oneLine(t))))
 		}
 	}
 
