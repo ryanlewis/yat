@@ -231,29 +231,26 @@ func pluralizeType(t string) string {
 
 func formatTypeCounts(byType map[string]int) []string {
 	order := []string{"Spike", "Task", "Story"}
+
+	// Clean the names first so types that differ only in line breaks or
+	// control characters count together.
+	cleaned := make(map[string]int, len(byType))
+	for t, c := range byType {
+		cleaned[strings.TrimSpace(oneLine(t))] += c
+	}
+
 	var parts []string
 
 	for _, t := range order {
-		if c, ok := byType[t]; ok {
+		if c, ok := cleaned[t]; ok {
 			parts = append(parts, fmt.Sprintf("%d %s", c, pluralizeType(t)))
+			delete(cleaned, t)
 		}
 	}
 
 	// Include any types not in the standard order
-	for t, c := range byType {
-		found := false
-
-		for _, o := range order {
-			if t == o {
-				found = true
-
-				break
-			}
-		}
-
-		if !found {
-			parts = append(parts, fmt.Sprintf("%d %s", c, pluralizeType(oneLine(t))))
-		}
+	for t, c := range cleaned {
+		parts = append(parts, fmt.Sprintf("%d %s", c, pluralizeType(t)))
 	}
 
 	return parts
