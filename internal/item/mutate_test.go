@@ -263,3 +263,42 @@ func TestSetStatusWithOptions_Alias(t *testing.T) {
 		})
 	}
 }
+
+// A quoted or spaced key loads, so it must also be written, keeping its spelling.
+func TestSetStatusWithOptions_QuotedOrSpacedKey(t *testing.T) {
+	tests := []struct {
+		name  string
+		field string
+		fm    string
+		want  string
+	}{
+		{name: "double-quoted", field: "status", fm: "id: A\n\"status\": todo\n", want: "id: A\n\"status\": done\n"},
+		{name: "single-quoted", field: "status", fm: "id: A\n'status': todo # c\n", want: "id: A\n'status': done # c\n"},
+		{name: "spaced", field: "status", fm: "id: A\nstatus : todo\n", want: "id: A\nstatus : done\n"},
+		{name: "quoted and spaced", field: "status", fm: "id: A\n\"status\"  :\ttodo\n", want: "id: A\n\"status\"  : done\n"},
+		{name: "quoted alias", field: "state", fm: "id: A\n\"state\": todo\n", want: "id: A\n\"state\": done\n"},
+		{name: "value on next line", field: "status", fm: "id: A\n\"status\":\n  todo\n", want: "id: A\n\"status\": done\n"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "a.md")
+			if err := os.WriteFile(path, []byte("---\n"+tt.fm+"---\n\nBody.\n"), 0o644); err != nil {
+				t.Fatalf("writing test file: %v", err)
+			}
+
+			if err := SetStatusWithOptions(path, StatusDone, MutateOptions{FieldName: tt.field}); err != nil {
+				t.Fatalf("SetStatusWithOptions: %v", err)
+			}
+
+			data, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatalf("reading back: %v", err)
+			}
+
+			if want := "---\n" + tt.want + "---\n\nBody.\n"; string(data) != want {
+				t.Errorf("got:\n%q\nwant:\n%q", data, want)
+			}
+		})
+	}
+}

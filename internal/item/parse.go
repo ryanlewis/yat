@@ -25,6 +25,9 @@ var (
 	utf8BOM              = []byte("\xef\xbb\xbf")
 )
 
+// statusField is the canonical frontmatter key for an item's status.
+const statusField = "status"
+
 // ErrMissingID is returned when a file has item-like frontmatter but no id field.
 var ErrMissingID = errors.New("item-like frontmatter has no id field")
 
@@ -70,7 +73,7 @@ func ParseWithOptions(data []byte, path string, opts ParseOptions) (*Item, error
 		return nil, nil
 	}
 
-	fm, err := remapAliases(fm, opts.Aliases, path)
+	fm, statusKey, err := remapAliases(fm, opts.Aliases, path)
 	if err != nil {
 		return nil, err
 	}
@@ -107,6 +110,7 @@ func ParseWithOptions(data []byte, path string, opts ParseOptions) (*Item, error
 
 	item.Dependencies = dedupe(item.Dependencies)
 	item.FilePath = path
+	item.StatusKey = statusKey
 	item.Body = string(body)
 
 	if item.Title == "" {
@@ -221,46 +225,88 @@ func indentWidth(line []byte) int {
 	return w
 }
 
-// remapAliases rewrites aliased frontmatter keys to their canonical names.
-func remapAliases(fm []byte, aliases map[string]string, path string) ([]byte, error) {
-	if len(aliases) == 0 {
-		return fm, nil
-	}
-
+// remapAliases rewrites aliased frontmatter keys to their canonical names, and
+// returns the key the file stores the status under ("" when it has none).
+func remapAliases(fm []byte, aliases map[string]string, path string) (remapped []byte, statusKey string, err error) {
 	// Rename keys in the node tree rather than round-tripping through a map, so
 	// values keep their source text (007, 1.10) and key order and anchors survive.
 	var doc yaml.Node
-	if err := yaml.Unmarshal(fm, &doc); err != nil {
-		return nil, fmt.Errorf("parsing frontmatter in %s: %w", path, err)
+	if err = yaml.Unmarshal(fm, &doc); err != nil {
+		if len(aliases) == 0 {
+			return fm, "", nil // decoding the item reports it
+		}
+
+		return nil, "", fmt.Errorf("parsing frontmatter in %s: %w", path, err)
 	}
 
 	if len(doc.Content) == 0 || doc.Content[0].Kind != yaml.MappingNode {
-		return fm, nil
+		return fm, "", nil
 	}
 
 	mapping := doc.Content[0]
-	keys := make(map[string]*yaml.Node, len(mapping.Content)/2)
+	present := make(map[string]bool, len(mapping.Content)/2)
 
 	for i := 0; i+1 < len(mapping.Content); i += 2 {
-		keys[mapping.Content[i].Value] = mapping.Content[i]
+		present[mapping.Content[i].Value] = true
 	}
 
-	for alias, canonical := range aliases {
-		if key, ok := keys[alias]; ok {
-			if _, exists := keys[canonical]; !exists {
-				key.Value = canonical
-				keys[canonical] = key
-				delete(keys, alias)
-			}
+	if present[statusField] && !renamed(statusField, aliases, present) {
+		statusKey = statusField
+	}
+
+	if len(aliases) == 0 {
+		return fm, statusKey, nil
+	}
+
+	// Decide every rename from the file's own keys before changing any, so the
+	// result does not depend on map order.
+	var renames []*yaml.Node
+
+	for i := 0; i+1 < len(mapping.Content); i += 2 {
+		if key := mapping.Content[i]; renamed(key.Value, aliases, present) {
+			renames = append(renames, key)
 		}
 	}
 
-	remapped, err := yaml.Marshal(&doc)
-	if err != nil {
-		return nil, fmt.Errorf("re-marshaling frontmatter in %s: %w", path, err)
+	for _, key := range renames {
+		if aliases[key.Value] == statusField {
+			statusKey = key.Value
+		}
+
+		key.Value = aliases[key.Value]
 	}
 
-	return remapped, nil
+	remapped, err = yaml.Marshal(&doc)
+	if err != nil {
+		return nil, "", fmt.Errorf("re-marshaling frontmatter in %s: %w", path, err)
+	}
+
+	return remapped, statusKey, nil
+}
+
+// renamed reports whether key is renamed to the field it is an alias for. Keys
+// are renamed all at once: a field the file already has a key for is free only
+// if that key is itself renamed (status: state, priority: status), otherwise the
+// file's own key wins and the alias key is left as it is.
+func renamed(key string, aliases map[string]string, present map[string]bool) bool {
+	start := key
+
+	// With each field aliased once, a walk ends or comes back to start within
+	// len(aliases) steps.
+	for range len(aliases) {
+		target, ok := aliases[key]
+		if !ok || target == key {
+			return false
+		}
+
+		if !present[target] || target == start {
+			return true // the target is free, or a cycle of keys swaps names
+		}
+
+		key = target
+	}
+
+	return false
 }
 
 // validateStatus checks and normalizes the status field on an item.

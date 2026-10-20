@@ -108,18 +108,22 @@ func NewRunContext(dir string, jsonOutput bool, cfg *config.Config) (*RunContext
 	}, nil
 }
 
-func (rc *RunContext) mutateOptions() item.MutateOptions {
-	opts := item.MutateOptions{
-		FieldName:     rc.StatusField,
+// mutateOptions returns the options that write the item's status under the key
+// its file uses, as parse found it.
+func (rc *RunContext) mutateOptions(it *item.Item) (item.MutateOptions, error) {
+	if it.StatusKey == "" {
+		keys := rc.StatusField
+		if !rc.statusIsAlias && keys != statusKey {
+			keys = statusKey + " or " + keys
+		}
+
+		return item.MutateOptions{}, fmt.Errorf("no %s field found in frontmatter of %s", keys, it.FilePath)
+	}
+
+	return item.MutateOptions{
+		FieldName:     it.StatusKey,
 		ValidStatuses: item.NewStatusSet(rc.Statuses.AllValid()),
-	}
-
-	// Write whichever key the file uses; parse reads "status" before the alias.
-	if !rc.statusIsAlias {
-		opts.FieldName, opts.Alias = statusKey, rc.StatusField
-	}
-
-	return opts
+	}, nil
 }
 
 func (rc *RunContext) writeJSON(v any) error {

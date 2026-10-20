@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strings"
 	"syscall"
 
 	"gopkg.in/yaml.v3"
@@ -74,7 +75,7 @@ func SetStatusWithOptions(path string, newStatus Status, opts MutateOptions) err
 	}
 
 	updatedFM := fieldRe.ReplaceAllFunc(fm, func(m []byte) []byte {
-		return replaceStatusValue(m, fieldName, newStatus)
+		return replaceStatusValue(m, fieldRe.FindSubmatchIndex(m)[3], newStatus)
 	})
 
 	// The rewrite works on lines, so check the YAML still reads back as intended
@@ -117,10 +118,15 @@ func statusKey(fm []byte, fieldName, alias, path string) (string, *regexp.Regexp
 }
 
 // statusFieldRe matches a fieldName key line through its end, plus an indented
-// value on the next line (YAML allows "status:\n  todo"). replaceStatusValue
-// decides what to keep.
+// value on the next line (YAML allows "status:\n  todo"). The key may be quoted
+// or followed by spaces ("status" : todo); group 1 is the key through its colon.
+// replaceStatusValue decides what to keep.
 func statusFieldRe(fieldName string) *regexp.Regexp {
-	return regexp.MustCompile(`(?m)^` + regexp.QuoteMeta(fieldName) + `:[^\r\n]*(?:\r?\n[ \t]+[^\s#][^\r\n]*)?`)
+	key := regexp.QuoteMeta(fieldName)
+	single := regexp.QuoteMeta(strings.ReplaceAll(fieldName, "'", "''"))
+
+	return regexp.MustCompile(`(?m)^((?:` + key + `|"` + key + `"|'` + single + `')[ \t]*:)` +
+		`[^\r\n]*(?:\r?\n[ \t]+[^\s#][^\r\n]*)?`)
 }
 
 // writeFileAtomic replaces the file at path with data, so a crash or a full disk
@@ -229,12 +235,13 @@ func writeAndClose(f *os.File, data []byte, orig fs.FileInfo) error {
 	return f.Close()
 }
 
-// replaceStatusValue rewrites one "field: value" match, keeping any trailing
-// comment. m is the key line, optionally followed by an indented next line.
-func replaceStatusValue(m []byte, fieldName string, newStatus Status) []byte {
-	rest := m[len(fieldName)+1:]
+// replaceStatusValue rewrites one "field: value" match, keeping the key as
+// written and any trailing comment. m is the key line, optionally followed by an
+// indented next line, and m[:keyEnd] is the key through its colon.
+func replaceStatusValue(m []byte, keyEnd int, newStatus Status) []byte {
+	rest := m[keyEnd:]
 	line, next, hasNext := bytes.Cut(rest, []byte("\n"))
-	out := []byte(fieldName + ": " + string(newStatus))
+	out := append(bytes.Clone(m[:keyEnd]), " "+string(newStatus)...)
 
 	hasValue, tail := splitScalar(line)
 	if hasValue || !hasNext {

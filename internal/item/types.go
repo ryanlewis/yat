@@ -99,4 +99,8 @@ type Item struct {
 	FilePath string                 `yaml:"-"       json:"file_path"`
 	Body     string                 `yaml:"-"       json:"-"`
 	Extra    map[string]interface{} `yaml:",inline" json:"extra,omitempty"`
+
+	// StatusKey is the frontmatter key the status was read from (status or
+	// its alias), or "" when the file has none and the status is the default.
+	StatusKey string `yaml:"-" json:"-"`
 }

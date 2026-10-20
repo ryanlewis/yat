@@ -3,6 +3,7 @@ package config_test
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/ryanlewis/yat/internal/config"
@@ -714,5 +715,43 @@ func TestLoad_RelativeDirInWorkingDirectoryUnchanged(t *testing.T) {
 	// Item paths in output are built from Dir, so it must stay relative here.
 	if cfg.Dir != "spec" {
 		t.Fatalf("expected %q, got %q", "spec", cfg.Dir)
+	}
+}
+
+func TestValidate_AliasNamedAfterField(t *testing.T) {
+	tests := []struct {
+		name    string
+		aliases map[string]string
+		wantErr string
+	}{
+		{name: "unaliased field", aliases: map[string]string{"priority": "status"},
+			wantErr: `alias "status" for "priority" is the name of another field`},
+		{name: "chain", aliases: map[string]string{"status": "state", "priority": "status"}},
+		{name: "swap", aliases: map[string]string{"status": "phase", "phase": "status"}},
+		{name: "own name", aliases: map[string]string{"status": "status"}},
+		// The same error every run, whatever the map order.
+		{name: "duplicate alias", aliases: map[string]string{"type": "kind", "phase": "kind", "title": "kind"},
+			wantErr: `alias "kind" is used for both "phase" and "title"`},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			for range 20 {
+				c := config.Config{FieldAliases: tt.aliases}
+
+				err := c.Validate()
+				if tt.wantErr == "" {
+					if err != nil {
+						t.Fatalf("Validate: %v", err)
+					}
+
+					continue
+				}
+
+				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("err = %v, want %q", err, tt.wantErr)
+				}
+			}
+		})
 	}
 }

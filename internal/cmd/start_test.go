@@ -195,9 +195,9 @@ func TestStartCmd_CustomStatuses_AlreadyActive(t *testing.T) {
 }
 
 // With status aliased to state, start must write the key the file uses,
-// whichever spelling that is.
+// whichever spelling that is, quoted or spaced.
 func TestStartCmd_FieldAlias(t *testing.T) {
-	for _, key := range []string{"status", "state"} {
+	for _, key := range []string{"status", "state", `"status"`, "'state'", "status ", `"state" `} {
 		t.Run(key, func(t *testing.T) {
 			dir := t.TempDir()
 			writeItemFile(t, dir, "a.md", "---\nid: A\n"+key+": todo\n---\n")
@@ -251,5 +251,35 @@ func TestStartCmd_FieldAliasStatusIsOtherFieldsAlias(t *testing.T) {
 	}
 	if want := "---\nid: A\nstate: in-progress\nstatus: High\n---\n"; string(data) != want {
 		t.Errorf("got:\n%s\nwant:\n%s", data, want)
+	}
+}
+
+// When the only status key in a file holds another field, there is no status
+// to write: start must fail and leave the file alone.
+func TestStartCmd_StatusKeyHoldsOtherField(t *testing.T) {
+	dir := t.TempDir()
+	content := "---\nid: A\nstatus: High\n---\n"
+	writeItemFile(t, dir, "a.md", content)
+
+	cfg := &config.Config{FieldAliases: map[string]string{"priority": "status"}}
+	cfg.Defaults()
+
+	rc, err := NewRunContext(dir, false, cfg)
+	if err != nil {
+		t.Fatalf("NewRunContext: %v", err)
+	}
+	rc.Stdout = &bytes.Buffer{}
+
+	err = (&StartCmd{ID: "A"}).Run(rc)
+	if err == nil || !strings.Contains(err.Error(), "no status field found") {
+		t.Fatalf("err = %v, want no status field found", err)
+	}
+
+	data, err := os.ReadFile(filepath.Join(dir, "a.md"))
+	if err != nil {
+		t.Fatalf("reading back: %v", err)
+	}
+	if string(data) != content {
+		t.Errorf("file changed:\n%s", data)
 	}
 }
