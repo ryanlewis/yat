@@ -219,7 +219,7 @@ yat skill uninstall claude  # removes only yat's own files
 
 For an agent yat has no adapter for, `yat skill show` prints the rendered `SKILL.md` to paste into its prompt. `yat agents` prints the same thing.
 
-`yat init` detects `CLAUDE.md` and `AGENTS.md` in your project root and offers to append the same instructions to them.
+`yat init` detects `CLAUDE.md` and `AGENTS.md` in your project root and offers to append a short pointer to them: a heading, the core loop (`yat next`, `yat start <id>`, `yat complete <id>`) and a note to run `yat skill show` for the full guide. It does not install the skill.
 
 ## Development
 

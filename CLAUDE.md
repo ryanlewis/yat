@@ -36,7 +36,7 @@ internal/
     config.go        Load with directory traversal, tilde expansion
   skill/             Bundled agent skill (embedded SKILL.md) and per-agent install adapters
     skill.go         Name/Description constants, Render, registry, Install/Uninstall/Exists
-    SKILL.md         Skill body, go:embed-ed; also what `yat agents` and `yat init` write
+    SKILL.md         Skill body, go:embed-ed; also what `yat agents` prints
   cmd/               One file per command, all implement Run(*RunContext) error
     context.go       RunContext: loads items, builds graph, shared by all commands
 ```

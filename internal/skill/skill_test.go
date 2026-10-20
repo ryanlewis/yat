@@ -329,19 +329,6 @@ func keys(m map[string][]byte) []string {
 	return out
 }
 
-func TestSectionDemotesHeadingsOutsideFences(t *testing.T) {
-	out := Section()
-	if !strings.HasPrefix(out, "## yat (issue tracker)\n") {
-		t.Errorf("Section should start with a level-2 heading, got %q", out[:min(len(out), 40)])
-	}
-	if strings.Contains(out, "\n## Safety\n") || !strings.Contains(out, "\n### Safety\n") {
-		t.Error("Section did not demote the Safety heading")
-	}
-	if !strings.Contains(out, "\n# ... do the work ...\n") {
-		t.Error("Section demoted a comment inside a code fence")
-	}
-}
-
 // TestForeignSkillFileLeftAlone guards against a --path pointing at another
 // skill's directory: uninstall must not delete its SKILL.md (or the directory),
 // and the file must not count as installed.
