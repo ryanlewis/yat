@@ -13,6 +13,9 @@ type cli struct {
 	Dir  string `help:"Path to items directory (overrides .yat.yaml)." type:"path" env:"YAT_DIR"`
 	JSON bool   `help:"Output as JSON." short:"j"`
 
+	// Dashboard runs when no command is given (bare `yat`).
+	Dashboard cmd.DashboardCmd `cmd:"" default:"1" hidden:"" help:"Show in-progress and ready items at a glance."`
+
 	Init     cmd.InitCmd     `cmd:"" help:"Initialize a new yat project in the current directory."`
 	Ready    cmd.ReadyCmd    `cmd:"" help:"Show items ready to work on."`
 	Next     cmd.NextCmd     `cmd:"" help:"Show the highest-priority ready item."`
@@ -28,11 +31,6 @@ type cli struct {
 
 func main() {
 	var c cli
-
-	if len(os.Args) < 2 {
-		fmt.Fprintf(os.Stderr, "yat: no command given. Run 'yat --help' for usage.\n")
-		os.Exit(0)
-	}
 
 	ctx := kong.Parse(&c,
 		kong.Name("yat"),
@@ -75,6 +73,14 @@ func main() {
 	}
 
 	if _, statErr := os.Stat(dir); os.IsNotExist(statErr) {
+		if ctx.Command() == "dashboard" {
+			if err := cmd.WriteNoProject(os.Stdout, c.JSON, dir); err != nil {
+				fmt.Fprintf(os.Stderr, "error: %v\n", err)
+				os.Exit(1)
+			}
+			os.Exit(0)
+		}
+
 		fmt.Fprintf(os.Stderr, "error: items directory %q not found.\n", dir)
 		fmt.Fprintf(os.Stderr,
 			"Run 'yat init' to create a new project, or use --dir to specify a different directory.\n")
