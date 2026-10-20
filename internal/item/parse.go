@@ -449,7 +449,7 @@ func renameAliasKeys(mapping *yaml.Node, aliases map[string]string) (from string
 	targets := make(map[string]bool, len(aliases))         // fields some alias stands for
 
 	for i := 0; i+1 < len(mapping.Content); i += 2 {
-		if key := mapping.Content[i].Value; !isAlias(key) {
+		if key := keyName(mapping.Content[i]); !isAlias(key) {
 			owned[key] = true
 		}
 	}
@@ -468,16 +468,22 @@ func renameAliasKeys(mapping *yaml.Node, aliases map[string]string) (from string
 
 	for i := 0; i+1 < len(mapping.Content); i += 2 {
 		key, value := mapping.Content[i], mapping.Content[i+1]
+		name := keyName(key)
 
-		switch canonical := aliases[key.Value]; {
-		case !isAlias(key.Value):
+		switch canonical := aliases[name]; {
+		case !isAlias(name):
 		case !owned[canonical]:
 			if canonical == statusField {
-				from = key.Value
+				from = name
+			}
+
+			if key.Kind == yaml.AliasNode {
+				// Renaming an alias would point it at another anchor.
+				key = &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str"}
 			}
 
 			key.Value = canonical
-		case targets[key.Value]:
+		case targets[name]:
 			// The field's own key wins. This alias key would read as the field
 			// it is named after, which another alias stands for, so drop it.
 			continue
@@ -491,6 +497,16 @@ func renameAliasKeys(mapping *yaml.Node, aliases map[string]string) (from string
 	mapping.Content = content
 
 	return from
+}
+
+// keyName returns the key a mapping key node reads as. An alias used as a key
+// (*s) reads as its anchor's value, as decoding takes it, not the anchor's name.
+func keyName(key *yaml.Node) string {
+	if key.Kind == yaml.AliasNode && key.Alias != nil {
+		return key.Alias.Value
+	}
+
+	return key.Value
 }
 
 // validateStatus checks and normalizes the status field on an item.

@@ -407,6 +407,17 @@ func TestParseWithOptions_StatusKey(t *testing.T) {
 			name: "status key is another field's", fm: "id: A\nstatus: High\n",
 			aliases: map[string]string{"status": "priority"}, wantKey: "", wantStatus: StatusTodo,
 		},
+		// An alias used as a key (*s) reads as its anchor's value, not its name.
+		{name: "alias node key", fm: "id: A\nx: &s status\n*s : done\n", wantKey: "status", wantStatus: StatusDone},
+		{name: "alias node named status", fm: "id: A\nx: &status foo\n*status : done\n", wantKey: "", wantStatus: StatusTodo},
+		{
+			name: "alias node key is an alias", fm: "id: A\nx: &s state\n*s : done\n",
+			aliases: map[string]string{"state": "status"}, wantKey: "state", wantStatus: StatusDone,
+		},
+		{
+			name: "alias node named for an alias", fm: "id: A\nx: &state foo\n*state : done\n",
+			aliases: map[string]string{"state": "status"}, wantKey: "", wantStatus: StatusTodo,
+		},
 	}
 
 	for _, tt := range tests {
