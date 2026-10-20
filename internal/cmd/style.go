@@ -5,6 +5,7 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"unicode"
 
 	"github.com/charmbracelet/glamour"
 	"github.com/charmbracelet/lipgloss"
@@ -158,16 +159,23 @@ func padWidth(s string, targetWidth int) string {
 }
 
 // oneLine replaces line breaks, tabs and other vertical whitespace with spaces
-// so a title stays on one line and its width can be counted when padding
-// columns.
+// and drops the remaining control characters, so a value from an item file
+// stays on one line, cannot send terminal escape codes, and its width can be
+// counted when padding columns.
 func oneLine(s string) string {
-	return lineBreaks.Replace(s)
-}
+	return strings.Map(func(r rune) rune {
+		switch r {
+		case '\n', '\r', '\t', '\v', '\f', '\u0085', '\u2028', '\u2029':
+			return ' '
+		}
 
-var lineBreaks = strings.NewReplacer(
-	"\r\n", " ", "\n", " ", "\r", " ", "\t", " ", "\v", " ", "\f", " ",
-	"\u0085", " ", "\u2028", " ", "\u2029", " ",
-)
+		if unicode.IsControl(r) {
+			return -1
+		}
+
+		return r
+	}, strings.ReplaceAll(s, "\r\n", "\n"))
+}
 
 // displayWidth returns the number of terminal columns s occupies.
 func displayWidth(s string) int {

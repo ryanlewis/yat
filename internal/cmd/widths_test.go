@@ -160,6 +160,72 @@ func TestOneLine_VerticalWhitespace(t *testing.T) {
 	}
 }
 
+func TestOneLine_DropsControlCharacters(t *testing.T) {
+	in := "Fix\x1b[2J\x1b]0;x\x07 a\bb\x00c\x7fd\u009be"
+	if got, want := oneLine(in), "Fix[2J]0;x abcde"; got != want {
+		t.Errorf("oneLine(%q) = %q, want %q", in, got, want)
+	}
+}
+
+// TestShowNext_FieldsWithBreaks checks that show and next print type, phase
+// and extra values with line breaks or escape codes on one line, while JSON
+// keeps them raw.
+func TestShowNext_FieldsWithBreaks(t *testing.T) {
+	items := func() []*item.Item {
+		return []*item.Item{{
+			ID: "A", Title: "T", Type: "Big\ntask", Phase: "alpha\r\nbeta", Status: item.StatusTodo,
+			Extra: map[string]interface{}{"notes": "line1\nline2\x1b[2J"},
+		}}
+	}
+
+	for _, tc := range []struct {
+		name string
+		cmd  interface{ Run(*RunContext) error }
+	}{
+		{"show", &ShowCmd{ID: "A"}},
+		{"next", &NextCmd{}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			rc, buf := newTestContext(t, items(), false)
+			if err := tc.cmd.Run(rc); err != nil {
+				t.Fatalf("Run: %v", err)
+			}
+			out := buf.String()
+			for _, w := range []string{"Type: Big task  |", "Phase: alpha beta", "notes: line1 line2[2J\n"} {
+				if !strings.Contains(out, w) {
+					t.Errorf("expected %q in output, got:\n%s", w, out)
+				}
+			}
+			if strings.Contains(out, "\x1b") {
+				t.Errorf("escape code in output:\n%q", out)
+			}
+
+			rc, buf = newTestContext(t, items(), true)
+			if err := tc.cmd.Run(rc); err != nil {
+				t.Fatalf("Run: %v", err)
+			}
+			if !strings.Contains(buf.String(), `"phase": "alpha\r\nbeta"`) {
+				t.Errorf("expected raw phase in JSON, got:\n%s", buf.String())
+			}
+		})
+	}
+}
+
+func TestStatusCmd_PhasesWithBreaks(t *testing.T) {
+	items := []*item.Item{
+		{ID: "TK-001", Title: "One", Type: "Task", Status: item.StatusTodo, Phase: "Q1\nplanning"},
+		{ID: "TK-002", Title: "Two", Type: "Task", Status: item.StatusTodo, Phase: "alpha"},
+	}
+	rc, buf := newTestContext(t, items, false)
+	if err := (&StatusCmd{}).Run(rc); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if !strings.Contains(buf.String(), "Q1 planning:") {
+		t.Errorf("expected phase on one line, got:\n%s", buf.String())
+	}
+	assertColumnAligned(t, buf.String(), "1  (0 pts)", 2)
+}
+
 // TestSingleItemOutput_TitlesWithBreaks checks that blocked, show, next,
 // start and complete print a title with line breaks on one line.
 func TestSingleItemOutput_TitlesWithBreaks(t *testing.T) {

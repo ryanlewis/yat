@@ -149,7 +149,7 @@ func (s *StatusCmd) writeJSON(rc *RunContext, d *statusData) error {
 func writePhases(rc *RunContext, d *statusData, names []string) {
 	var maxName, maxCount int
 	for _, name := range names {
-		maxName = max(maxName, displayWidth(name)+1)
+		maxName = max(maxName, displayWidth(oneLine(name))+1)
 		maxCount = max(maxCount, len(strconv.Itoa(d.byPhase[name].count)))
 	}
 
@@ -162,7 +162,7 @@ func writePhases(rc *RunContext, d *statusData, names []string) {
 		}
 
 		rc.printf("  %s  %s  (%d pts)%s\n",
-			padWidth(name+":", maxName), padWidth(strconv.Itoa(g.count), maxCount), g.points, marker)
+			padWidth(oneLine(name)+":", maxName), padWidth(strconv.Itoa(g.count), maxCount), g.points, marker)
 	}
 }
 
