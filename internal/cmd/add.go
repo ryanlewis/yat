@@ -58,6 +58,8 @@ const (
 // numberedID splits an id into a prefix and a trailing number (TK-007 → TK-, 007).
 var numberedID = regexp.MustCompile(`^(.*?)(\d+)$`)
 
+func (*AddCmd) writesItems() {}
+
 // Run executes the add command.
 func (a *AddCmd) Run(rc *RunContext) error {
 	if rc.ReadOnly {

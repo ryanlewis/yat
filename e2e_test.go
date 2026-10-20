@@ -1023,46 +1023,66 @@ func TestE2E_Add_EmptyBodyIgnoresOpenStdin(t *testing.T) {
 // not wait.
 func TestE2E_WritersLoadUnderLock(t *testing.T) {
 	t.Parallel()
-	dir := setupProject(t)
-	items := filepath.Join(dir, "spec")
 
-	lock, err := item.LockDir(items)
-	if err != nil {
-		t.Fatal(err)
+	tests := []struct {
+		args   []string
+		change string // written to spec/ while the lock is held
+		want   string // in the output once the lock is released
+	}{
+		{[]string{"start", testItemID}, "tk-001.md", "already done"},
+		{[]string{"complete", testItemID}, "tk-001.md", "already done"},
+		{[]string{"add", "New", "--type", "task", "--json"}, "tk-005.md", `"id": "TK-006"`},
 	}
 
-	unlock := sync.OnceFunc(lock)
-	defer unlock()
+	for _, tt := range tests {
+		t.Run(tt.args[0], func(t *testing.T) {
+			t.Parallel()
+			dir := setupProject(t)
+			items := filepath.Join(dir, "spec")
 
-	start := time.Now()
-	if _, stderr, code := run(t, dir, "list"); code != 0 || time.Since(start) > 5*time.Second {
-		t.Fatalf("list exit %d after %v: %s", code, time.Since(start), stderr)
-	}
+			lock, err := item.LockDir(items)
+			if err != nil {
+				t.Fatal(err)
+			}
 
-	cmd := exec.Command(yatBin(), "complete", testItemID)
-	cmd.Dir = dir
+			unlock := sync.OnceFunc(lock)
+			defer unlock()
 
-	var stderr strings.Builder
-	cmd.Stderr = &stderr
+			start := time.Now()
+			if _, stderr, code := run(t, dir, "list"); code != 0 || time.Since(start) > 5*time.Second {
+				t.Fatalf("list exit %d after %v: %s", code, time.Since(start), stderr)
+			}
 
-	if err := cmd.Start(); err != nil {
-		t.Fatal(err)
-	}
+			cmd := exec.Command(yatBin(), tt.args...)
+			cmd.Dir = dir
 
-	done := make(chan error, 1)
-	go func() { done <- cmd.Wait() }()
+			var out strings.Builder
+			cmd.Stdout = &out
+			cmd.Stderr = &out
 
-	select {
-	case err := <-done:
-		t.Fatalf("complete ran while the lock was held: %v, %s", err, stderr.String())
-	case <-time.After(200 * time.Millisecond):
-	}
+			if err := cmd.Start(); err != nil {
+				t.Fatal(err)
+			}
 
-	writeItem(t, items, "tk-001.md", "---\nid: TK-001\nstatus: done\n---\n")
-	unlock()
+			done := make(chan error, 1)
+			go func() { done <- cmd.Wait() }()
 
-	if err := <-done; err == nil || !strings.Contains(stderr.String(), "already done") {
-		t.Errorf("complete: %v, stderr %q, want already done", err, stderr.String())
+			select {
+			case err := <-done:
+				t.Fatalf("%s ran while the lock was held: %v, %s", tt.args[0], err, out.String())
+			case <-time.After(200 * time.Millisecond):
+			}
+
+			id := strings.ToUpper(strings.TrimSuffix(tt.change, ".md"))
+			writeItem(t, items, tt.change, "---\nid: "+id+"\ntype: Task\nstatus: done\n---\n")
+			unlock()
+
+			<-done
+
+			if !strings.Contains(out.String(), tt.want) {
+				t.Errorf("%s output %q, want %q", tt.args[0], out.String(), tt.want)
+			}
+		})
 	}
 }
 

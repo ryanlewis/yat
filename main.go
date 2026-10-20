@@ -92,7 +92,7 @@ func main() {
 		exitMissingDir(dir, ctx.Command() == "dashboard" && c.Dir == "" && cfg.Dir == "", c.JSON)
 	}
 
-	rc, err := newRunContext(ctx.Command(), &c, dir, &cfg)
+	rc, err := newRunContext(ctx.Selected(), dir, c.JSON, &cfg)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		os.Exit(1)
@@ -107,23 +107,27 @@ func main() {
 	}
 }
 
-// newRunContext loads the items for command. The commands that write items
-// (start, complete and add) load them under the items directory's lock, unless
-// the project is read-only and they will refuse to write.
-func newRunContext(command string, c *cli, dir string, cfg *config.Config) (*cmd.RunContext, error) {
-	switch {
-	case cfg.ReadOnly:
-	case command == "start <id>", command == "complete <id>":
-		return cmd.NewLockedRunContext(dir, c.JSON, cfg)
-	case command == "add <title>":
-		if err := c.Add.ReadBody(); err != nil {
-			return nil, err
-		}
-
-		return cmd.NewLockedRunContext(dir, c.JSON, cfg)
+// newRunContext loads the items for the selected command. A command that
+// writes items loads them under the items directory's lock, unless the project
+// is read-only and it will refuse to write.
+func newRunContext(selected *kong.Node, dir string, jsonOutput bool, cfg *config.Config) (*cmd.RunContext, error) {
+	if cfg.ReadOnly || selected == nil || !selected.Target.CanAddr() {
+		return cmd.NewRunContext(dir, jsonOutput, cfg)
 	}
 
-	return cmd.NewRunContext(dir, c.JSON, cfg)
+	target := selected.Target.Addr().Interface()
+	if _, ok := target.(cmd.ItemWriter); !ok {
+		return cmd.NewRunContext(dir, jsonOutput, cfg)
+	}
+
+	// add reads a piped body first, so a slow pipe does not hold the lock.
+	if add, ok := target.(*cmd.AddCmd); ok {
+		if err := add.ReadBody(); err != nil {
+			return nil, err
+		}
+	}
+
+	return cmd.NewLockedRunContext(dir, jsonOutput, cfg)
 }
 
 // exitMissingDir exits when the items directory does not exist: 0 with an

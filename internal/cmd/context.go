@@ -42,6 +42,12 @@ type RunContext struct {
 	skipped []string
 }
 
+// ItemWriter is a command that writes items: yat loads the items for it with
+// NewLockedRunContext.
+type ItemWriter interface {
+	writesItems()
+}
+
 // statusKey is the canonical frontmatter key for an item's status.
 const statusKey = "status"
 
