@@ -143,6 +143,12 @@ func loadWalk(startDir string) (Config, bool, error) {
 		}
 
 		if found {
+			// A relative dir is relative to the config file, not to where the
+			// search started. Left as is when they match, so paths stay short.
+			if dir != startDir && cfg.Dir != "" && !filepath.IsAbs(cfg.Dir) {
+				cfg.Dir = filepath.Join(dir, cfg.Dir)
+			}
+
 			return cfg, true, nil
 		}
 
@@ -178,11 +184,6 @@ func tryLoadFromDir(dir string) (Config, bool, error) {
 		expanded, expandErr := ExpandTilde(cfg.Dir)
 		if expandErr != nil {
 			return Config{}, false, expandErr
-		}
-
-		// A relative dir is relative to the config file, not to wherever yat runs.
-		if expanded != "" && !filepath.IsAbs(expanded) {
-			expanded = filepath.Join(dir, expanded)
 		}
 
 		cfg.Dir = expanded

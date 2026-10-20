@@ -697,3 +697,22 @@ func TestExpandTilde_OtherUserNotExpanded(t *testing.T) {
 		t.Fatalf("expected path unchanged, got %q", got)
 	}
 }
+
+func TestLoad_RelativeDirInWorkingDirectoryUnchanged(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+
+	if err := os.WriteFile(filepath.Join(dir, ".yat.yaml"), []byte("dir: spec\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := config.Load()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Item paths in output are built from Dir, so it must stay relative here.
+	if cfg.Dir != "spec" {
+		t.Fatalf("expected %q, got %q", "spec", cfg.Dir)
+	}
+}
