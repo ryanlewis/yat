@@ -144,51 +144,121 @@ func dedupe(ids []string) []string {
 // Indent is measured from the content column of any list item the line sits
 // under, so a heading indented under "- step" still counts.
 func extractHeading(body []byte) string {
-	var (
-		fence []byte // marker of the open fence, nil outside one
-		lists []int  // content columns of the open list items, innermost last
-	)
+	var s headingScanner
 
 	for _, line := range bytes.Split(body, []byte("\n")) {
-		trimmed := bytes.TrimSpace(line)
-
-		var indent int
-		if len(trimmed) > 0 {
-			lists, indent = listIndent(lists, indentWidth(line))
-		}
-
-		// Four columns of indent make a code line: never a heading or a fence.
-		if indent >= codeIndent {
-			continue
-		}
-
-		if fence != nil {
-			// Only a bare run of the same character, at least as long, closes the fence.
-			if run := fenceMarker(trimmed); run != nil && len(run) == len(trimmed) &&
-				run[0] == fence[0] && len(run) >= len(fence) {
-				fence = nil
-			}
-
-			continue
-		}
-
-		if fence = fenceMarker(trimmed); fence != nil {
-			continue
-		}
-
-		if col := listContentColumn(trimmed, indentWidth(line)); col > 0 {
-			lists = append(lists, col)
-			continue
-		}
-
-		for _, prefix := range []string{"# ", "## ", "### "} {
-			if bytes.HasPrefix(trimmed, []byte(prefix)) {
-				return string(bytes.TrimSpace(trimmed[len(prefix):]))
-			}
+		if title, ok := s.scan(line); ok {
+			return title
 		}
 	}
 
 	return ""
+}
+
+// headingScanner tracks the block context extractHeading needs between lines:
+// open fences, open list items and whether a paragraph is running.
+type headingScanner struct {
+	fence      []byte // marker of the open fence, nil outside one
+	fenceDepth int    // list items open when the fence opened
+	lists      []int  // content columns of the open list items, innermost last
+	para       bool   // the previous line was paragraph text
+}
+
+// scan reads one line and returns the heading text when the line is a heading.
+func (s *headingScanner) scan(line []byte) (string, bool) {
+	trimmed := bytes.TrimSpace(line)
+	if len(trimmed) == 0 {
+		s.para = false
+		return "", false
+	}
+
+	start := indentWidth(line)
+	inList := len(s.lists) > 0
+
+	// A line indented less than an item's content is outside that item, unless
+	// it lazily continues the item's paragraph.
+	if s.para && inList && start < s.lists[len(s.lists)-1] && !interruptsParagraph(trimmed, start, true) {
+		return "", false
+	}
+
+	var indent int
+	s.lists, indent = listIndent(s.lists, start)
+
+	if s.fence != nil && len(s.lists) < s.fenceDepth {
+		s.fence = nil // closing the item closes the fence inside it
+	}
+
+	// Four columns of indent make a code line: never a heading or a fence.
+	if indent >= codeIndent {
+		return "", false
+	}
+
+	if s.scanFence(trimmed) {
+		return "", false
+	}
+
+	if col := listContentColumn(trimmed, start); col > 0 && (!s.para || interruptsParagraph(trimmed, start, inList)) {
+		s.lists = append(s.lists, col)
+		s.para = len(trimmed) > listMarker(trimmed)
+
+		return "", false
+	}
+
+	if title, ok := atxHeading(trimmed); ok {
+		return title, true
+	}
+
+	s.para = true
+
+	return "", false
+}
+
+// scanFence opens or closes a fence on line and reports whether line is fenced
+// code or a fence marker.
+func (s *headingScanner) scanFence(line []byte) bool {
+	if s.fence != nil {
+		// Only a bare run of the same character, at least as long, closes the fence.
+		if run := fenceMarker(line); run != nil && len(run) == len(line) &&
+			run[0] == s.fence[0] && len(run) >= len(s.fence) {
+			s.fence = nil
+		}
+
+		return true
+	}
+
+	if s.fence = fenceMarker(line); s.fence != nil {
+		s.fenceDepth, s.para = len(s.lists), false
+		return true
+	}
+
+	return false
+}
+
+// interruptsParagraph reports whether line starts a heading, fence or list item
+// rather than continuing the paragraph above it. Outside a list, only a list
+// item that starts at 1 and is not empty can interrupt a paragraph.
+func interruptsParagraph(line []byte, start int, inList bool) bool {
+	if _, ok := atxHeading(line); ok || fenceMarker(line) != nil {
+		return true
+	}
+
+	n := listMarker(line)
+	if n == 0 || listContentColumn(line, start) == 0 {
+		return false
+	}
+
+	return inList || (len(line) > n && (n == 1 || string(line[:n-1]) == "1"))
+}
+
+// atxHeading returns the text of line when it is an h1–h3 ATX heading.
+func atxHeading(line []byte) (string, bool) {
+	for _, prefix := range []string{"# ", "## ", "### "} {
+		if bytes.HasPrefix(line, []byte(prefix)) {
+			return string(bytes.TrimSpace(line[len(prefix):])), true
+		}
+	}
+
+	return "", false
 }
 
 // minFenceLen is the shortest run of ` or ~ that opens a code fence.
