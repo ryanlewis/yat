@@ -218,7 +218,7 @@ func TestAddCmd_BodyFromStdin(t *testing.T) {
 		t.Errorf("body not written from stdin:\n%s", got)
 	}
 
-	runAdd(t, rc, &AddCmd{Title: "Flag", ID: "F-1", Body: "From flag", stdin: strings.NewReader("ignored")})
+	runAdd(t, rc, &AddCmd{Title: "Flag", ID: "F-1", Body: ptr("From flag"), stdin: strings.NewReader("ignored")})
 
 	if got := readFile(t, filepath.Join(dir, "F-1-flag.md")); !strings.HasSuffix(got, "\nFrom flag\n") {
 		t.Errorf("--body not used:\n%s", got)
@@ -229,7 +229,7 @@ func TestAddCmd_JSON(t *testing.T) {
 	dir := addTestDir(t)
 	rc, buf := newAddContext(t, dir, defaultConfig(), true)
 
-	runAdd(t, rc, &AddCmd{Title: "Json", Type: "Task", Phase: "1", Body: "b"})
+	runAdd(t, rc, &AddCmd{Title: "Json", Type: "Task", Phase: "1", Body: ptr("b")})
 
 	var got addJSON
 	if err := json.Unmarshal(buf.Bytes(), &got); err != nil {
@@ -279,7 +279,8 @@ func TestAddCmd_AliasCollision(t *testing.T) {
 func TestSlugify(t *testing.T) {
 	for in, want := range map[string]string{
 		"Fix: the  login bug!":    "fix-the-login-bug",
-		"ünïcode":                 "n-code",
+		"Über naïve café":         "über-naïve-café",
+		"タスク 2":                   "タスク-2",
 		"---":                     "",
 		strings.Repeat("ab ", 30): strings.Repeat("ab-", 16) + "ab",
 	} {
@@ -298,5 +299,30 @@ func TestAddCmd_PrefixEndingInDigit(t *testing.T) {
 
 	if _, err := os.Stat(filepath.Join(dir, "V2002-b.md")); err != nil {
 		t.Errorf("expected V2002 after V2001: %v", err)
+	}
+}
+
+func ptr(s string) *string { return &s }
+
+func TestAddCmd_EmptyBodyFlagSkipsStdin(t *testing.T) {
+	dir := addTestDir(t)
+	rc, _ := newAddContext(t, dir, defaultConfig(), false)
+
+	runAdd(t, rc, &AddCmd{Title: "Empty", ID: "E-1", Body: ptr(""), stdin: strings.NewReader("not the body")})
+
+	if got := readFile(t, filepath.Join(dir, "E-1-empty.md")); strings.Contains(got, "not the body") {
+		t.Errorf("stdin read despite --body \"\":\n%s", got)
+	}
+}
+
+func TestAddCmd_TypeTakesExistingCasing(t *testing.T) {
+	dir := addTestDir(t)
+	rc, _ := newAddContext(t, dir, defaultConfig(), false)
+
+	runAdd(t, rc, &AddCmd{Title: "Lower", Type: "task"})
+
+	got := readFile(t, filepath.Join(dir, "tasks", "TK-007-lower.md"))
+	if !strings.Contains(got, "\ntype: Task\n") {
+		t.Errorf("want type: Task, got:\n%s", got)
 	}
 }

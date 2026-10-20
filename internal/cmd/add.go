@@ -26,7 +26,7 @@ type AddCmd struct {
 	Dep      []string `help:"ID of an item this one depends on (repeatable)."`
 	Phase    string   `help:"Phase label."`
 	Status   string   `help:"Status (default: the first initial status)."`
-	Body     string   `help:"Item body (default: read from stdin when it is a pipe or a file)."`
+	Body     *string  `help:"Item body. When not given, read from stdin if it is a pipe or a file."`
 	ID       string   `name:"id" help:"ID to use instead of the next one for the type." xor:"id"`
 	Prefix   string   `help:"ID prefix to number from, e.g. TK- (default: the prefix items of the type use)." xor:"id"`
 
@@ -146,13 +146,31 @@ func (a *AddCmd) newItem(rc *RunContext) (*item.Item, error) {
 
 	return &item.Item{
 		Title:        title,
-		Type:         a.Type,
+		Type:         existingType(rc.Items, a.Type),
 		Priority:     priority,
 		Points:       a.Points,
 		Dependencies: deps,
 		Status:       item.Status(status),
 		Phase:        a.Phase,
 	}, nil
+}
+
+// existingType returns typ in the casing existing items use for it (task →
+// Task), the most common casing if they differ, or typ when no item has it.
+func existingType(items []*item.Item, typ string) string {
+	counts := map[string]int{}
+
+	for _, it := range items {
+		if it.Type != "" && strings.EqualFold(it.Type, typ) {
+			counts[it.Type]++
+		}
+	}
+
+	if existing, ok := mostCommon(counts); ok {
+		return existing
+	}
+
+	return typ
 }
 
 // parsePriority returns the priority named by s, ignoring case.
@@ -299,7 +317,7 @@ func mostCommon(counts map[string]int) (string, bool) {
 	return best, bestN > 0
 }
 
-// fileName returns "<id>-<slug>.md", or "<id>.md" when the title has no ASCII
+// fileName returns "<id>-<slug>.md", or "<id>.md" when the title has no
 // letters or digits.
 func fileName(id, title string) string {
 	if slug := slugify(title); slug != "" {
@@ -309,57 +327,58 @@ func fileName(id, title string) string {
 	return id + ".md"
 }
 
-// slugify lowercases title and joins its runs of ASCII letters and digits with
-// hyphens, cut to maxSlugLen.
+// slugify lowercases title and joins its runs of letters and digits (in any
+// script) with hyphens, cut to maxSlugLen runes.
 func slugify(title string) string {
-	var b strings.Builder
+	var slug []rune
 
 	gap := false
 
 	for _, r := range strings.ToLower(title) {
-		if (r < 'a' || r > 'z') && (r < '0' || r > '9') {
+		if !unicode.IsLetter(r) && !unicode.IsDigit(r) {
 			gap = true
 
 			continue
 		}
 
-		if gap && b.Len() > 0 {
-			b.WriteByte('-')
+		if gap && len(slug) > 0 {
+			slug = append(slug, '-')
 		}
 
 		gap = false
 
-		b.WriteRune(r)
+		slug = append(slug, r)
 	}
 
-	s := b.String()
-	if len(s) > maxSlugLen {
-		s = strings.TrimRight(s[:maxSlugLen], "-")
+	if len(slug) > maxSlugLen {
+		slug = slug[:maxSlugLen]
 	}
 
-	return s
+	return strings.TrimRight(string(slug), "-")
 }
 
-// body returns --body, else stdin when it is piped or redirected from a file,
-// else "". Other stdins (a terminal, a socket an agent harness left open) are
-// not read, as they may never reach EOF.
+// body returns --body when given, even if empty, so stdin is then never read.
+// Otherwise it reads stdin when it is piped or redirected from a file. Other
+// stdins (a terminal, a socket an agent harness left open) are not read, as
+// they may never reach EOF.
 func (a *AddCmd) body() (string, error) {
-	body := a.Body
+	stdin := a.stdin
+	if stdin == nil {
+		stdin = os.Stdin
+	}
 
-	if body == "" {
-		stdin := a.stdin
-		if stdin == nil {
-			stdin = os.Stdin
+	var body string
+
+	switch {
+	case a.Body != nil:
+		body = *a.Body
+	case pipedInput(stdin):
+		data, err := io.ReadAll(stdin)
+		if err != nil {
+			return "", fmt.Errorf("reading body from stdin: %w", err)
 		}
 
-		if pipedInput(stdin) {
-			data, err := io.ReadAll(stdin)
-			if err != nil {
-				return "", fmt.Errorf("reading body from stdin: %w", err)
-			}
-
-			body = string(data)
-		}
+		body = string(data)
 	}
 
 	if body != "" && !strings.HasSuffix(body, "\n") {

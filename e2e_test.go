@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 const testItemID = "TK-001"
@@ -966,5 +967,50 @@ func TestE2E_ShortJSONFlag(t *testing.T) {
 	var result map[string]any
 	if err := json.Unmarshal([]byte(stdout), &result); err != nil {
 		t.Fatalf("invalid JSON with -j flag: %v", err)
+	}
+}
+
+// An agent's subprocess may leave stdin open; --body "" must not wait on it.
+func TestE2E_Add_EmptyBodyIgnoresOpenStdin(t *testing.T) {
+	dir := setupProject(t)
+
+	cmd := exec.Command(yatBin(), "add", "From an agent", "--type", "task", "--body", "", "--json")
+	cmd.Dir = dir
+
+	stdin, err := cmd.StdinPipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer stdin.Close()
+
+	var out strings.Builder
+	cmd.Stdout = &out
+
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+
+	done := make(chan error, 1)
+	go func() { done <- cmd.Wait() }()
+
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("yat add: %v", err)
+		}
+	case <-time.After(10 * time.Second):
+		_ = cmd.Process.Kill()
+		t.Fatal("yat add --body \"\" waited on stdin")
+	}
+
+	var got struct {
+		ID, Type, Body string
+	}
+	if err := json.Unmarshal([]byte(out.String()), &got); err != nil {
+		t.Fatalf("invalid JSON: %v\n%s", err, out.String())
+	}
+
+	if got.ID != "TK-003" || got.Type != "Task" || got.Body != "" {
+		t.Errorf("got %+v, want TK-003, type Task, empty body", got)
 	}
 }

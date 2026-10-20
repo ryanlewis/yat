@@ -93,9 +93,9 @@ yat add "Write integration tests" --type Task --priority High --dep TK-001
 ```
 
 - **ID**: the next number for the prefix that existing items of the same `--type` use, keeping their zero-padding (`TK-007` after `TK-006`). `--prefix BG-` numbers from another prefix (`BG-001` if none exist yet). `--id` sets the id exactly; an id that already exists is an error. If no prefix can be inferred, pass `--prefix` or `--id`.
-- **Location**: `<ID>-<slug>.md`, where the slug is the title in lowercase ASCII with hyphens. The file goes in the folder where most items of that type live, or the items directory root if there are none. An existing file is never overwritten.
-- **Fields**: `--type`, `--priority`, `--points`, `--dep` (repeatable), `--phase`, and `--status` (default: the first `initial` status, `todo` unless configured). Keys follow `field_aliases`.
-- **Body**: `--body "..."`, or piped in (`cat notes.md | yat add "Title"`). Otherwise the body is empty.
+- **Location**: `<ID>-<slug>.md`, where the slug is the title in lowercase, its words joined with hyphens. The file goes in the folder where most items of that type live, or the items directory root if there are none. An existing file is never overwritten.
+- **Fields**: `--type` (written in the casing existing items use, so `task` becomes `Task`), `--priority`, `--points`, `--dep` (repeatable), `--phase`, and `--status` (default: the first `initial` status, `todo` unless configured). Keys follow `field_aliases`.
+- **Body**: `--body "..."`, or piped in (`cat notes.md | yat add "Title"`). Otherwise the body is empty. When `--body` is given, even as `--body ""`, stdin is not read.
 
 `yat add` is refused when the project is `readonly`.
 
