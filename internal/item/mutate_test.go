@@ -217,3 +217,49 @@ status: pending
 		t.Errorf("body status line was incorrectly rewritten, got:\n%s", result)
 	}
 }
+
+func TestSetStatusWithOptions_Alias(t *testing.T) {
+	tests := []struct {
+		name    string
+		fm      string
+		want    string
+		wantErr string
+	}{
+		{name: "canonical only", fm: "id: A\nstatus: todo\n", want: "id: A\nstatus: done\n"},
+		{name: "alias only", fm: "id: A\nstate: todo\n", want: "id: A\nstate: done\n"},
+		// parse reads status first when both are present, so that is the key written.
+		{name: "both", fm: "id: A\nstate: todo\nstatus: todo\n", want: "id: A\nstate: todo\nstatus: done\n"},
+		{name: "neither", fm: "id: A\n", wantErr: "no status or state field found"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "a.md")
+			if err := os.WriteFile(path, []byte("---\n"+tt.fm+"---\n\nBody.\n"), 0o644); err != nil {
+				t.Fatalf("writing test file: %v", err)
+			}
+
+			err := SetStatusWithOptions(path, StatusDone, MutateOptions{FieldName: "status", Alias: "state"})
+			if tt.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("err = %v, want %q", err, tt.wantErr)
+				}
+
+				return
+			}
+
+			if err != nil {
+				t.Fatalf("SetStatusWithOptions: %v", err)
+			}
+
+			data, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatalf("reading back: %v", err)
+			}
+
+			if want := "---\n" + tt.want + "---\n\nBody.\n"; string(data) != want {
+				t.Errorf("got:\n%s\nwant:\n%s", data, want)
+			}
+		})
+	}
+}

@@ -90,8 +90,10 @@ func NewRunContext(dir string, jsonOutput bool, cfg *config.Config) (*RunContext
 }
 
 func (rc *RunContext) mutateOptions() item.MutateOptions {
+	// Write whichever key the file uses; parse reads "status" before the alias.
 	return item.MutateOptions{
-		FieldName:     rc.StatusField,
+		FieldName:     "status",
+		Alias:         rc.StatusField,
 		ValidStatuses: item.NewStatusSet(rc.Statuses.AllValid()),
 	}
 }

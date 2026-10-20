@@ -1,11 +1,14 @@
 package cmd
 
 import (
+	"bytes"
 	"encoding/json"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/ryanlewis/yat/internal/config"
 	"github.com/ryanlewis/yat/internal/item"
 )
 
@@ -188,5 +191,37 @@ func TestStartCmd_CustomStatuses_AlreadyActive(t *testing.T) {
 	}
 	if !strings.Contains(buf.String(), "already in progress") {
 		t.Errorf("expected 'already in progress', got:\n%s", buf.String())
+	}
+}
+
+// With status aliased to state, start must write the key the file uses,
+// whichever spelling that is.
+func TestStartCmd_FieldAlias(t *testing.T) {
+	for _, key := range []string{"status", "state"} {
+		t.Run(key, func(t *testing.T) {
+			dir := t.TempDir()
+			writeItemFile(t, dir, "a.md", "---\nid: A\n"+key+": todo\n---\n")
+
+			cfg := &config.Config{FieldAliases: map[string]string{"status": "state"}}
+			cfg.Defaults()
+
+			rc, err := NewRunContext(dir, false, cfg)
+			if err != nil {
+				t.Fatalf("NewRunContext: %v", err)
+			}
+			rc.Stdout = &bytes.Buffer{}
+
+			if err = (&StartCmd{ID: "A"}).Run(rc); err != nil {
+				t.Fatalf("Run: %v", err)
+			}
+
+			data, err := os.ReadFile(filepath.Join(dir, "a.md"))
+			if err != nil {
+				t.Fatalf("reading back: %v", err)
+			}
+			if want := "---\nid: A\n" + key + ": in-progress\n---\n"; string(data) != want {
+				t.Errorf("got:\n%s\nwant:\n%s", data, want)
+			}
+		})
 	}
 }
