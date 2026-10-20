@@ -23,6 +23,16 @@ func LoadAll(dir string) ([]*Item, error) {
 
 // LoadAllWithOptions is like LoadAll but accepts custom parsing options.
 func LoadAllWithOptions(dir string, opts ParseOptions) ([]*Item, error) {
+	return loadAll(dir, opts, warnSkip)
+}
+
+// ReloadWithOptions is like LoadAllWithOptions but warns about no file, for a
+// second load of a directory whose warnings were already printed.
+func ReloadWithOptions(dir string, opts ParseOptions) ([]*Item, error) {
+	return loadAll(dir, opts, func(string, error) {})
+}
+
+func loadAll(dir string, opts ParseOptions, warnSkip func(path string, err error)) ([]*Item, error) {
 	var items []*Item
 
 	err := filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
