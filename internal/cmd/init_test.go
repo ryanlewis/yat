@@ -710,3 +710,10 @@ func TestHasAgentHeading_CodeFence(t *testing.T) {
 		})
 	}
 }
+
+func TestHasAgentHeading_InlineBackticksNotFence(t *testing.T) {
+	// A backtick fence's info string cannot hold a backtick: this is inline code.
+	if !hasAgentHeading("```x``` is inline\n\n## yat (issue tracker)\n") {
+		t.Error("inline ``` opened a fence; real heading missed")
+	}
+}
