@@ -20,7 +20,10 @@ type ParseOptions struct {
 	DefaultStatus Status
 }
 
-var frontmatterDelimiter = []byte("---")
+var (
+	frontmatterDelimiter = []byte("---")
+	utf8BOM              = []byte("\xef\xbb\xbf")
+)
 
 // ErrMissingID is returned when a file has item-like frontmatter but no id field.
 var ErrMissingID = errors.New("item-like frontmatter has no id field")
@@ -137,21 +140,35 @@ func remapAliases(fm []byte, aliases map[string]string, path string) ([]byte, er
 		return fm, nil
 	}
 
-	var raw map[string]interface{}
-	if err := yaml.Unmarshal(fm, &raw); err != nil {
+	// Rename keys in the node tree rather than round-tripping through a map, so
+	// values keep their source text (007, 1.10) and key order and anchors survive.
+	var doc yaml.Node
+	if err := yaml.Unmarshal(fm, &doc); err != nil {
 		return nil, fmt.Errorf("parsing frontmatter in %s: %w", path, err)
 	}
 
+	if len(doc.Content) == 0 || doc.Content[0].Kind != yaml.MappingNode {
+		return fm, nil
+	}
+
+	mapping := doc.Content[0]
+	keys := make(map[string]*yaml.Node, len(mapping.Content)/2)
+
+	for i := 0; i+1 < len(mapping.Content); i += 2 {
+		keys[mapping.Content[i].Value] = mapping.Content[i]
+	}
+
 	for alias, canonical := range aliases {
-		if v, ok := raw[alias]; ok {
-			if _, exists := raw[canonical]; !exists {
-				raw[canonical] = v
-				delete(raw, alias)
+		if key, ok := keys[alias]; ok {
+			if _, exists := keys[canonical]; !exists {
+				key.Value = canonical
+				keys[canonical] = key
+				delete(keys, alias)
 			}
 		}
 	}
 
-	remapped, err := yaml.Marshal(raw)
+	remapped, err := yaml.Marshal(&doc)
 	if err != nil {
 		return nil, fmt.Errorf("re-marshaling frontmatter in %s: %w", path, err)
 	}
@@ -212,38 +229,51 @@ func hasDirective(fm []byte, directive string) bool {
 // splitFrontmatter splits file content at the opening and closing --- delimiters.
 // Returns the frontmatter bytes, body bytes, and whether a valid split was found.
 func splitFrontmatter(data []byte) (fm, body []byte, ok bool) {
-	data = bytes.TrimLeft(data, "\n\r")
-
-	if !bytes.HasPrefix(data, frontmatterDelimiter) {
+	fmStart, fmEnd, bodyStart, ok := frontmatterBounds(data)
+	if !ok {
 		return nil, nil, false
+	}
+
+	return data[fmStart:fmEnd], data[bodyStart:], true
+}
+
+// frontmatterBounds locates the frontmatter in data. data[fmStart:fmEnd] is the
+// frontmatter (starting with the newline after the opening ---) and
+// data[bodyStart:] is the body. A leading UTF-8 BOM and blank lines are skipped.
+func frontmatterBounds(data []byte) (fmStart, fmEnd, bodyStart int, ok bool) {
+	start := len(data) - len(bytes.TrimLeft(bytes.TrimPrefix(data, utf8BOM), "\n\r"))
+
+	if !bytes.HasPrefix(data[start:], frontmatterDelimiter) {
+		return 0, 0, 0, false
 	}
 
 	// The opening --- must be followed by a newline (LF or CRLF), not arbitrary text.
-	rest := data[len(frontmatterDelimiter):]
+	fmStart = start + len(frontmatterDelimiter)
+	rest := data[fmStart:]
 	if len(rest) == 0 || (rest[0] != '\n' && rest[0] != '\r') {
-		return nil, nil, false
+		return 0, 0, 0, false
 	}
 	idx := bytes.Index(rest, []byte("\n---"))
 	if idx < 0 {
-		return nil, nil, false
+		return 0, 0, 0, false
 	}
 
 	// The closing --- must be on its own line (followed by newline, CR, or EOF).
 	afterClose := rest[idx+len("\n---"):]
 	if len(afterClose) > 0 && afterClose[0] != '\n' && afterClose[0] != '\r' {
-		return nil, nil, false
+		return 0, 0, 0, false
 	}
 
-	fm = rest[:idx]
+	fmEnd = fmStart + idx
 
 	// Body starts after the closing --- and its trailing newline
-	body = rest[idx+len("\n---"):]
-	if len(body) > 0 && body[0] == '\r' {
-		body = body[1:]
+	bodyStart = fmEnd + len("\n---")
+	if bodyStart < len(data) && data[bodyStart] == '\r' {
+		bodyStart++
 	}
-	if len(body) > 0 && body[0] == '\n' {
-		body = body[1:]
+	if bodyStart < len(data) && data[bodyStart] == '\n' {
+		bodyStart++
 	}
 
-	return fm, body, true
+	return fmStart, fmEnd, bodyStart, true
 }
