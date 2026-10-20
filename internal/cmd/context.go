@@ -26,7 +26,14 @@ type RunContext struct {
 	Styles      *Styles
 	Statuses    config.StatusGroups
 	StatusField string // "status" or the configured alias
+
+	// statusIsAlias is set when another field is aliased to "status", so a
+	// status key in a file holds that field, not the status.
+	statusIsAlias bool
 }
+
+// statusKey is the canonical frontmatter key for an item's status.
+const statusKey = "status"
 
 // NewRunContext loads items and builds the graph.
 func NewRunContext(dir string, jsonOutput bool, cfg *config.Config) (*RunContext, error) {
@@ -71,10 +78,12 @@ func NewRunContext(dir string, jsonOutput bool, cfg *config.Config) (*RunContext
 		return nil, err
 	}
 
-	statusField := "status"
-	if alias, ok := cfg.FieldAliases["status"]; ok {
+	statusField := statusKey
+	if alias, ok := cfg.FieldAliases[statusKey]; ok {
 		statusField = alias
 	}
+
+	statusIsAlias := aliases[statusKey] != "" && aliases[statusKey] != statusKey
 
 	return &RunContext{
 		Items:       items,
@@ -86,16 +95,23 @@ func NewRunContext(dir string, jsonOutput bool, cfg *config.Config) (*RunContext
 		Styles:      newStyles(os.Stdout, cfg.Statuses),
 		Statuses:    cfg.Statuses,
 		StatusField: statusField,
+
+		statusIsAlias: statusIsAlias,
 	}, nil
 }
 
 func (rc *RunContext) mutateOptions() item.MutateOptions {
-	// Write whichever key the file uses; parse reads "status" before the alias.
-	return item.MutateOptions{
-		FieldName:     "status",
-		Alias:         rc.StatusField,
+	opts := item.MutateOptions{
+		FieldName:     rc.StatusField,
 		ValidStatuses: item.NewStatusSet(rc.Statuses.AllValid()),
 	}
+
+	// Write whichever key the file uses; parse reads "status" before the alias.
+	if !rc.statusIsAlias {
+		opts.FieldName, opts.Alias = statusKey, rc.StatusField
+	}
+
+	return opts
 }
 
 func (rc *RunContext) writeJSON(v any) error {

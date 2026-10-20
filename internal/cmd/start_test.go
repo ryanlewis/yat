@@ -225,3 +225,31 @@ func TestStartCmd_FieldAlias(t *testing.T) {
 		})
 	}
 }
+
+// When another field is aliased to status, a status key holds that field, so
+// start must write the status alias and leave it alone.
+func TestStartCmd_FieldAliasStatusIsOtherFieldsAlias(t *testing.T) {
+	dir := t.TempDir()
+	writeItemFile(t, dir, "a.md", "---\nid: A\nstate: todo\nstatus: High\n---\n")
+
+	cfg := &config.Config{FieldAliases: map[string]string{"status": "state", "priority": "status"}}
+	cfg.Defaults()
+
+	rc, err := NewRunContext(dir, false, cfg)
+	if err != nil {
+		t.Fatalf("NewRunContext: %v", err)
+	}
+	rc.Stdout = &bytes.Buffer{}
+
+	if err = (&StartCmd{ID: "A"}).Run(rc); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+
+	data, err := os.ReadFile(filepath.Join(dir, "a.md"))
+	if err != nil {
+		t.Fatalf("reading back: %v", err)
+	}
+	if want := "---\nid: A\nstate: in-progress\nstatus: High\n---\n"; string(data) != want {
+		t.Errorf("got:\n%s\nwant:\n%s", data, want)
+	}
+}
