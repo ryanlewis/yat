@@ -107,20 +107,28 @@ func ParseWithOptions(data []byte, path string, opts ParseOptions) (*Item, error
 }
 
 // extractHeading returns the text of the first ATX heading (h1–h3) in the body, or "".
-// Headings inside fenced code blocks are ignored.
+// Headings inside fenced code blocks (``` or ~~~) are ignored.
 func extractHeading(body []byte) string {
-	inFence := false
+	var fence []byte // marker of the open fence, nil outside one
 
 	for _, line := range bytes.Split(body, []byte("\n")) {
 		trimmed := bytes.TrimSpace(line)
 
-		if bytes.HasPrefix(trimmed, []byte("```")) {
-			inFence = !inFence
+		if fence != nil {
+			if bytes.HasPrefix(trimmed, fence) {
+				fence = nil
+			}
 
 			continue
 		}
 
-		if inFence {
+		for _, marker := range [][]byte{[]byte("```"), []byte("~~~")} {
+			if bytes.HasPrefix(trimmed, marker) {
+				fence = marker
+			}
+		}
+
+		if fence != nil {
 			continue
 		}
 
