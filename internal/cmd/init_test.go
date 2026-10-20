@@ -273,7 +273,7 @@ func TestInitCmd_AgentFiles_ClaudeMD(t *testing.T) {
 	if !strings.Contains(content, "## yat (issue tracker)") {
 		t.Error("expected yat instructions in CLAUDE.md")
 	}
-	for _, want := range []string{"yat skill show", "yat skill install claude --path .claude/skills", "yat next", "yat start <id>", "yat complete <id>"} {
+	for _, want := range []string{"yat skill show", "yat skill install claude --path .claude/skills/yat", "yat next", "yat start <id>", "yat complete <id>"} {
 		if !strings.Contains(content, want) {
 			t.Errorf("pointer is missing %q", want)
 		}

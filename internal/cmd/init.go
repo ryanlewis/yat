@@ -37,7 +37,7 @@ const agentPointer = `
 ## yat (issue tracker)
 
 This project tracks items with yat. Run ` + "`yat skill show`" + ` for the full guide.
-For a project-local install: ` + "`yat skill install claude --path .claude/skills`" + `.
+For a project-local install: ` + "`yat skill install claude --path .claude/skills/yat`" + `.
 Core loop: ` + "`yat next`" + `, ` + "`yat start <id>`" + `, ` + "`yat complete <id>`" + `.
 `
 
