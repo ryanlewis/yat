@@ -246,14 +246,6 @@ func (c *Config) Validate() error {
 			return fmt.Errorf("alias %q is used for both %q and %q", alias, prev, canonical)
 		}
 		aliasTargets[alias] = canonical
-
-		// An alias named after another field takes that field's key, which is
-		// only safe when that field reads from an alias of its own.
-		if _, aliased := c.FieldAliases[alias]; canonicalFields[alias] && alias != canonical && !aliased {
-			return fmt.Errorf(
-				"alias %q for %q is the name of another field; give %q an alias too, or pick another name",
-				alias, canonical, alias)
-		}
 	}
 
 	return nil
