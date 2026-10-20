@@ -115,20 +115,16 @@ func extractHeading(body []byte) string {
 		trimmed := bytes.TrimSpace(line)
 
 		if fence != nil {
-			if bytes.HasPrefix(trimmed, fence) {
+			// Only a bare run of the same character, at least as long, closes the fence.
+			if run := fenceMarker(trimmed); run != nil && len(run) == len(trimmed) &&
+				run[0] == fence[0] && len(run) >= len(fence) {
 				fence = nil
 			}
 
 			continue
 		}
 
-		for _, marker := range [][]byte{[]byte("```"), []byte("~~~")} {
-			if bytes.HasPrefix(trimmed, marker) {
-				fence = marker
-			}
-		}
-
-		if fence != nil {
+		if fence = fenceMarker(trimmed); fence != nil {
 			continue
 		}
 
@@ -140,6 +136,28 @@ func extractHeading(body []byte) string {
 	}
 
 	return ""
+}
+
+// minFenceLen is the shortest run of ` or ~ that opens a code fence.
+const minFenceLen = 3
+
+// fenceMarker returns the leading run of ` or ~ in line when it is long enough
+// to open a code fence, or nil.
+func fenceMarker(line []byte) []byte {
+	if len(line) == 0 || (line[0] != '`' && line[0] != '~') {
+		return nil
+	}
+
+	n := 0
+	for n < len(line) && line[n] == line[0] {
+		n++
+	}
+
+	if n < minFenceLen {
+		return nil
+	}
+
+	return line[:n]
 }
 
 // remapAliases rewrites aliased frontmatter keys to their canonical names.
