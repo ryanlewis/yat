@@ -100,16 +100,14 @@ func TestLoadAll_ReturnsSkippedPaths(t *testing.T) {
 
 	t.Cleanup(func() { warnOut = old })
 
-	for _, load := range []func(string, ParseOptions) ([]*Item, []string, error){LoadAllWithOptions, ReloadWithOptions} {
-		_, skipped, err := load(dir, ParseOptions{})
-		if err != nil {
-			t.Fatal(err)
-		}
+	_, skipped, err := LoadAllWithOptions(dir, ParseOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
 
-		want := []string{broken} // not list.md: it is readable and holds no item
-		if !slices.Equal(skipped, want) {
-			t.Errorf("skipped = %q, want %q", skipped, want)
-		}
+	want := []string{broken} // not list.md: it is readable and holds no item
+	if !slices.Equal(skipped, want) {
+		t.Errorf("skipped = %q, want %q", skipped, want)
 	}
 }
 

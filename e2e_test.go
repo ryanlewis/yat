@@ -6,8 +6,11 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
+
+	"github.com/ryanlewis/yat/internal/item"
 )
 
 const testItemID = "TK-001"
@@ -1012,5 +1015,128 @@ func TestE2E_Add_EmptyBodyIgnoresOpenStdin(t *testing.T) {
 
 	if got.ID != "TK-003" || got.Type != "Task" || got.Body != "" {
 		t.Errorf("got %+v, want TK-003, type Task, empty body", got)
+	}
+}
+
+// start, complete and add wait for the items directory's lock before they
+// load, so they see what was written while they waited. Read-only commands do
+// not wait.
+func TestE2E_WritersLoadUnderLock(t *testing.T) {
+	t.Parallel()
+	dir := setupProject(t)
+	items := filepath.Join(dir, "spec")
+
+	lock, err := item.LockDir(items)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	unlock := sync.OnceFunc(lock)
+	defer unlock()
+
+	start := time.Now()
+	if _, stderr, code := run(t, dir, "list"); code != 0 || time.Since(start) > 5*time.Second {
+		t.Fatalf("list exit %d after %v: %s", code, time.Since(start), stderr)
+	}
+
+	cmd := exec.Command(yatBin(), "complete", testItemID)
+	cmd.Dir = dir
+
+	var stderr strings.Builder
+	cmd.Stderr = &stderr
+
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+
+	done := make(chan error, 1)
+	go func() { done <- cmd.Wait() }()
+
+	select {
+	case err := <-done:
+		t.Fatalf("complete ran while the lock was held: %v, %s", err, stderr.String())
+	case <-time.After(200 * time.Millisecond):
+	}
+
+	writeItem(t, items, "tk-001.md", "---\nid: TK-001\nstatus: done\n---\n")
+	unlock()
+
+	if err := <-done; err == nil || !strings.Contains(stderr.String(), "already done") {
+		t.Errorf("complete: %v, stderr %q, want already done", err, stderr.String())
+	}
+}
+
+// add reads a piped body before it waits for the lock, so a slow pipe does not
+// hold the lock up.
+func TestE2E_Add_ReadsBodyBeforeLock(t *testing.T) {
+	t.Parallel()
+	dir := setupProject(t)
+
+	unlock, err := item.LockDir(filepath.Join(dir, "spec"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	cmd := exec.Command(yatBin(), "add", "Piped", "--type", "task", "--json")
+	cmd.Dir = dir
+
+	stdin, err := cmd.StdinPipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var out strings.Builder
+	cmd.Stdout = &out
+
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+
+	// More than a pipe buffer holds, so the write ends only once yat reads it.
+	body := strings.Repeat("x", 1<<20) + "\n"
+
+	written := make(chan error, 1)
+	go func() {
+		_, err := stdin.Write([]byte(body))
+		_ = stdin.Close()
+		written <- err
+	}()
+
+	select {
+	case err := <-written:
+		if err != nil {
+			t.Errorf("writing body: %v", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Error("add did not read stdin while another held the lock")
+	}
+
+	unlock()
+
+	if err := cmd.Wait(); err != nil {
+		t.Fatalf("yat add: %v", err)
+	}
+
+	var got struct{ Body string }
+	if err := json.Unmarshal([]byte(out.String()), &got); err != nil {
+		t.Fatalf("invalid JSON: %v", err)
+	}
+
+	if got.Body != body {
+		t.Errorf("body is %d bytes, want %d", len(got.Body), len(body))
+	}
+}
+
+// start, complete and add load the items once, so each warning is printed once.
+func TestE2E_WritersWarnOnce(t *testing.T) {
+	t.Parallel()
+	dir := setupProject(t)
+	writeItem(t, filepath.Join(dir, "spec"), "list.md", "---\n- a\n---\n")
+
+	for _, args := range [][]string{{"start", testItemID}, {"complete", testItemID}, {"add", "New", "--type", "task"}} {
+		_, stderr, code := run(t, dir, args...)
+		if code != 0 || strings.Count(stderr, "warning:") != 1 {
+			t.Errorf("%v: exit %d, stderr %q, want one warning", args, code, stderr)
+		}
 	}
 }

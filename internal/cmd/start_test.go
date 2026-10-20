@@ -284,20 +284,18 @@ func TestStartCmd_StatusKeyHoldsOtherField(t *testing.T) {
 	}
 }
 
-// A context loaded before another command completed the item must not start it
-// again: start reloads under the lock and sees it is done.
-func TestStartCmd_SeesItemCompletedSinceLoad(t *testing.T) {
+// A start that waits for the lock while another command completes the item
+// must not start it again: it loads under the lock and sees it is done.
+func TestStartCmd_SeesItemCompletedWhileWaiting(t *testing.T) {
 	dir := t.TempDir()
 	writeItemFile(t, dir, "a.md", "---\nid: A\nstatus: todo\n---\n")
 
-	stale, _ := newAddContext(t, dir, defaultConfig(), false)
-	other, _ := newAddContext(t, dir, defaultConfig(), false)
-
-	if err := (&CompleteCmd{ID: "A"}).Run(other); err != nil {
-		t.Fatalf("complete: %v", err)
-	}
-
-	err := (&StartCmd{ID: "A"}).Run(stale)
+	err := runWhileLocked(t, dir, func() {
+		other, _ := newAddContext(t, dir, defaultConfig(), false)
+		if err := (&CompleteCmd{ID: "A"}).Run(other); err != nil {
+			t.Errorf("complete: %v", err)
+		}
+	}, &StartCmd{ID: "A"})
 	if err == nil || !strings.Contains(err.Error(), "already done") {
 		t.Fatalf("err = %v, want already done", err)
 	}
@@ -307,17 +305,15 @@ func TestStartCmd_SeesItemCompletedSinceLoad(t *testing.T) {
 	}
 }
 
-// A dependency reopened since the context was loaded blocks start.
-func TestStartCmd_SeesDependencyReopenedSinceLoad(t *testing.T) {
+// A dependency reopened while start waits for the lock blocks start.
+func TestStartCmd_SeesDependencyReopenedWhileWaiting(t *testing.T) {
 	dir := t.TempDir()
 	writeItemFile(t, dir, "a.md", "---\nid: A\nstatus: done\n---\n")
 	writeItemFile(t, dir, "b.md", "---\nid: B\nstatus: todo\ndependencies: [A]\n---\n")
 
-	rc, _ := newAddContext(t, dir, defaultConfig(), false)
-
-	writeItemFile(t, dir, "a.md", "---\nid: A\nstatus: todo\n---\n")
-
-	err := (&StartCmd{ID: "B"}).Run(rc)
+	err := runWhileLocked(t, dir, func() {
+		writeItemFile(t, dir, "a.md", "---\nid: A\nstatus: todo\n---\n")
+	}, &StartCmd{ID: "B"})
 	if err == nil || !strings.Contains(err.Error(), "blocked by A") {
 		t.Fatalf("err = %v, want blocked by A", err)
 	}

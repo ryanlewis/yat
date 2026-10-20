@@ -53,15 +53,11 @@ func (s *StartCmd) Run(rc *RunContext) error {
 }
 
 // start sets the item in progress and reports whether it did; an item already
-// in progress is left as it is. Another yat command may have changed the item
-// or its dependencies since rc was loaded, so it holds the lock while
-// reloading, checking and writing, and releases it before anything is printed.
+// in progress is left as it is. It releases the items directory's lock, which
+// rc may hold so that no other yat command changes the item or its
+// dependencies between the load and the write, before anything is printed.
 func (s *StartCmd) start(rc *RunContext) (*item.Item, bool, error) {
-	unlock, err := rc.lockAndReload()
-	if err != nil {
-		return nil, false, err
-	}
-	defer unlock()
+	defer rc.Unlock()
 
 	it, ok := rc.Graph.Item(s.ID)
 	if !ok {

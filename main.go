@@ -92,16 +92,38 @@ func main() {
 		exitMissingDir(dir, ctx.Command() == "dashboard" && c.Dir == "" && cfg.Dir == "", c.JSON)
 	}
 
-	rc, err := cmd.NewRunContext(dir, c.JSON, &cfg)
+	rc, err := newRunContext(ctx.Command(), &c, dir, &cfg)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		os.Exit(1)
 	}
 
-	if err := ctx.Run(rc); err != nil {
+	err = ctx.Run(rc)
+	rc.Unlock()
+
+	if err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		os.Exit(1)
 	}
+}
+
+// newRunContext loads the items for command. The commands that write items
+// (start, complete and add) load them under the items directory's lock, unless
+// the project is read-only and they will refuse to write.
+func newRunContext(command string, c *cli, dir string, cfg *config.Config) (*cmd.RunContext, error) {
+	switch {
+	case cfg.ReadOnly:
+	case command == "start <id>", command == "complete <id>":
+		return cmd.NewLockedRunContext(dir, c.JSON, cfg)
+	case command == "add <title>":
+		if err := c.Add.ReadBody(); err != nil {
+			return nil, err
+		}
+
+		return cmd.NewLockedRunContext(dir, c.JSON, cfg)
+	}
+
+	return cmd.NewRunContext(dir, c.JSON, cfg)
 }
 
 // exitMissingDir exits when the items directory does not exist: 0 with an

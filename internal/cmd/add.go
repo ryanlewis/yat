@@ -97,17 +97,13 @@ func (a *AddCmd) Run(rc *RunContext) error {
 	return nil
 }
 
-// write picks it an id and folder and writes its file. Another yat add may have
-// written an item since rc was loaded, so it holds the lock while reloading,
-// picking the id and writing, so two adds never pick the same id, and releases
-// it before anything is printed.
+// write picks it an id and folder and writes its file. It releases the items
+// directory's lock, which rc may hold so that two adds never pick the same id,
+// before anything is printed.
 func (a *AddCmd) write(rc *RunContext, it *item.Item) error {
-	unlock, err := rc.lockAndReload()
-	if err != nil {
-		return err
-	}
-	defer unlock()
+	defer rc.Unlock()
 
+	var err error
 	if it.ID, err = a.resolveID(rc); err != nil {
 		return err
 	}
@@ -473,28 +469,42 @@ func slugify(title string) string {
 	return strings.TrimRight(string(slug), "-")
 }
 
-// body returns --body when given, even if empty, so stdin is then never read.
-// Otherwise it reads stdin when it is piped or redirected from a file. Other
-// stdins (a terminal, a socket an agent harness left open) are not read, as
-// they may never reach EOF.
-func (a *AddCmd) body() (string, error) {
+// ReadBody sets the body from stdin when --body is not given and stdin is piped
+// or redirected from a file; --body, even if empty, means stdin is never read.
+// Other stdins (a terminal, a socket an agent harness left open) are not read,
+// as they may never reach EOF. Call it before taking the items directory's
+// lock, so a slow pipe does not hold up other yat commands.
+func (a *AddCmd) ReadBody() error {
 	stdin := a.stdin
 	if stdin == nil {
 		stdin = os.Stdin
 	}
 
+	if a.Body != nil || !pipedInput(stdin) {
+		return nil
+	}
+
+	data, err := io.ReadAll(stdin)
+	if err != nil {
+		return fmt.Errorf("reading body from stdin: %w", err)
+	}
+
+	body := string(data)
+	a.Body = &body
+
+	return nil
+}
+
+// body returns the body ReadBody sets, reading it first if it has not been,
+// ending in a newline.
+func (a *AddCmd) body() (string, error) {
+	if err := a.ReadBody(); err != nil {
+		return "", err
+	}
+
 	var body string
-
-	switch {
-	case a.Body != nil:
+	if a.Body != nil {
 		body = *a.Body
-	case pipedInput(stdin):
-		data, err := io.ReadAll(stdin)
-		if err != nil {
-			return "", fmt.Errorf("reading body from stdin: %w", err)
-		}
-
-		body = string(data)
 	}
 
 	if body != "" && !strings.HasSuffix(body, "\n") {
