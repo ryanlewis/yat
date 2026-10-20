@@ -56,11 +56,11 @@ func (s *ShowCmd) Run(rc *RunContext) error {
 
 	fmt.Fprintf(rc.Stdout, "%s  |  Type: %s  |  Points: %d  |  Phase: %s  |  %s\n",
 		sty.Dim("Priority: ")+sty.Priority(item.Priority),
-		item.Type, item.Points, item.Phase,
+		oneLine(item.Type), item.Points, oneLine(item.Phase),
 		sty.Status(item.Status))
 
 	if len(item.Extra) > 0 {
-		fmt.Fprintf(rc.Stdout, "%s\n", formatExtra(item.Extra))
+		fmt.Fprintf(rc.Stdout, "%s\n", oneLine(formatExtra(item.Extra)))
 	}
 
 	if len(deps) > 0 {

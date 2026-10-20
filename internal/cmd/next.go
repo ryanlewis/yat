@@ -53,10 +53,10 @@ func (n *NextCmd) Run(rc *RunContext) error {
 
 	fmt.Fprintf(rc.Stdout, "%s  |  Type: %s  |  Points: %d  |  Phase: %s\n",
 		s.Dim("Priority: ")+s.Priority(item.Priority),
-		item.Type, item.Points, item.Phase)
+		oneLine(item.Type), item.Points, oneLine(item.Phase))
 
 	if len(item.Extra) > 0 {
-		fmt.Fprintf(rc.Stdout, "%s\n", formatExtra(item.Extra))
+		fmt.Fprintf(rc.Stdout, "%s\n", oneLine(formatExtra(item.Extra)))
 	}
 
 	fmt.Fprintf(rc.Stdout, "%s\n", s.Dim("File: "+item.FilePath))
