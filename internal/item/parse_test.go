@@ -311,6 +311,10 @@ func TestExtractHeading(t *testing.T) {
 		{"list ends on dedent", "- step one\n\nText\n\n    # Code\n# Title", "Title"},
 		{"thematic break is not a list item", "- - -\n\n    # Code\n# Title", "Title"},
 		{"tab after list marker", "-\tstep\n\n    # Real Title", "Real Title"},
+		{"closing a list item closes its fence", "- step\n\n  ```\n  code\n\n# Title", "Title"},
+		{"lazy line keeps list item open", "- step\ncontinued\n\n    # Title", "Title"},
+		{"list item after text must start at 1", "Text\n2. x\n\n     # Code\n# Title", "Title"},
+		{"sibling list item need not start at 1", "1. a\n2. b\n\n     # Title", "Title"},
 		{"fence under list item", "- step\n\n  ```\n  # Hidden\n  ```\n# Title", "Title"},
 	}
 
