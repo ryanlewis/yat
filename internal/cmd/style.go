@@ -151,6 +151,17 @@ func padRight(s string, visibleLen, targetWidth int) string {
 	return s
 }
 
+// padWidth pads s to targetWidth terminal columns, counting wide (e.g. CJK,
+// emoji) and zero-width runes by their display width rather than bytes.
+func padWidth(s string, targetWidth int) string {
+	return padRight(s, lipgloss.Width(s), targetWidth)
+}
+
+// displayWidth returns the number of terminal columns s occupies.
+func displayWidth(s string) int {
+	return lipgloss.Width(s)
+}
+
 func isTermWriter(w interface{}) bool {
 	f, ok := w.(*os.File)
 	if !ok {
