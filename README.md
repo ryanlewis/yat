@@ -77,7 +77,7 @@ yat start TK-001     # mark as in-progress
 yat complete TK-001  # mark as done
 yat blocked          # items waiting on dependencies
 yat graph            # dependency graph by layer
-yat agents           # usage guide for AI agents
+yat skill            # install the agent skill (see below)
 ```
 
 ## Completing items
@@ -203,11 +203,23 @@ yat status --json | jq '.ready_now'
 yat graph --json | jq '.layers'
 ```
 
-## AI agents
+## Agent skill
 
-`yat init` detects `CLAUDE.md` and `AGENTS.md` in your project root and offers to append yat usage instructions to them.
+yat ships an agent skill inside the binary: a `SKILL.md` that tells an AI coding agent when to use yat and how (safe and writing commands, the workflow loop, JSON shapes, common errors). Install it so the agent finds it on its own:
 
-Run `yat agents` to print a standalone usage guide that can be pasted into any agent's system prompt.
+```sh
+yat skill install claude    # ~/.claude/skills/yat/ ($CLAUDE_CONFIG_DIR is honored)
+yat skill install codex     # ~/.codex/skills/yat/ ($CODEX_HOME is honored)
+yat skill install pi        # ~/.pi/agent/skills/yat/ ($PI_CODING_AGENT_DIR is honored)
+yat skill list              # each agent, its path, and whether the skill is installed
+yat skill uninstall claude  # removes only yat's own files
+```
+
+`--path DIR` installs into a directory of your choice, such as a project-local `.claude/skills/yat`. Install asks before overwriting and uninstall asks before removing; pass `-y` to skip the prompt (required when not at a terminal, or with `--json`).
+
+For an agent yat has no adapter for, `yat skill show` prints the rendered `SKILL.md` to paste into its prompt. `yat agents` prints the same thing.
+
+`yat init` detects `CLAUDE.md` and `AGENTS.md` in your project root and offers to append the same instructions to them.
 
 ## Development
 

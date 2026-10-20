@@ -13,6 +13,7 @@ import (
 
 	"github.com/ergochat/readline"
 	"github.com/ryanlewis/yat/internal/config"
+	"github.com/ryanlewis/yat/internal/skill"
 	"golang.org/x/term"
 )
 
@@ -30,14 +31,6 @@ type initJSON struct {
 }
 
 var agentMDFiles = []string{"CLAUDE.md", "AGENTS.md"}
-
-const agentInstructions = `
-## yat (issue tracker)
-
-Useful commands: yat ready, yat next, yat status, yat show <id>, yat start <id>, yat complete <id>
-
-Config: .yat.yaml
-`
 
 const (
 	defaultDir                      = "spec"
@@ -223,7 +216,7 @@ func appendAgentInstructions(path string) error {
 		return fmt.Errorf("opening %s: %w", path, err)
 	}
 
-	_, writeErr := f.WriteString(agentInstructions)
+	_, writeErr := f.WriteString("\n" + skill.Section())
 	if closeErr := f.Close(); writeErr == nil {
 		writeErr = closeErr
 	}
