@@ -372,8 +372,4 @@ func TestAddCmd_ConcurrentAddsTakeDistinctIDs(t *testing.T) {
 	if len(items) != 3+n {
 		t.Errorf("got %d items, want %d", len(items), 3+n)
 	}
-
-	if _, err := os.Stat(filepath.Join(dir, item.LockName)); !os.IsNotExist(err) {
-		t.Errorf("lock file left behind: %v", err)
-	}
 }

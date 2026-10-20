@@ -78,7 +78,7 @@ func (a *AddCmd) Run(rc *RunContext) error {
 	}
 	defer unlock()
 
-	if rc.Items, err = item.LoadAllWithOptions(rc.Dir, rc.parseOpts); err != nil {
+	if rc.Items, err = item.ReloadWithOptions(rc.Dir, rc.parseOpts); err != nil {
 		return err
 	}
 
