@@ -682,3 +682,31 @@ func TestInitCmd_AgentFiles_SkippedJSON(t *testing.T) {
 		t.Errorf("AgentFiles = %v, want none", result.AgentFiles)
 	}
 }
+
+func TestHasAgentHeading_CodeFence(t *testing.T) {
+	const h = "## yat (issue tracker)\n"
+
+	tests := map[string]struct {
+		content string
+		want    bool
+	}{
+		"plain":              {"# A\n\n" + h, true},
+		"backtick fence":     {"```md\n" + h + "```\n", false},
+		"tilde fence":        {"~~~\n" + h + "~~~\n", false},
+		"long fence":         {"````\n```\n" + h + "````\n", false},
+		"other char closes":  {"```\n~~~\n" + h + "```\n", false},
+		"after closed fence": {"```\nx\n```\n" + h, true},
+		"unclosed fence":     {"```\n" + h, false},
+		"info on close":      {"```\n```js\n" + h, false},
+		"indented fence":     {"   ```\n" + h + "   ```\n", false},
+		"no heading":         {"```\nx\n```\n", false},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			if got := hasAgentHeading(tc.content); got != tc.want {
+				t.Errorf("hasAgentHeading = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}

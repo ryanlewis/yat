@@ -48,6 +48,11 @@ Core loop: ` + "`yat next`" + `, ` + "`yat start <id>`" + `, ` + "`yat complete 
 const agentHeading = "## yat (issue tracker)"
 
 const (
+	minFenceRun    = 3 // shortest run of backticks or tildes that opens a fence
+	maxFenceIndent = 3 // a fence indented further is code, not a fence
+)
+
+const (
 	defaultDir                      = "spec"
 	sampleItemFile                  = "example.md"
 	initDirPermissions  fs.FileMode = 0o750
@@ -186,14 +191,45 @@ func detectAgentFiles() (found, skipped []string) {
 	return found, skipped
 }
 
+// hasAgentHeading reports whether content has the yat heading outside a code
+// fence (``` or ~~~).
 func hasAgentHeading(content string) bool {
+	var fence string // run of the open fence, empty outside one
+
 	for line := range strings.Lines(content) {
-		if strings.TrimRight(line, " \t\r\n") == agentHeading {
+		line = strings.TrimRight(line, " \t\r\n")
+		marker := fenceRun(line)
+
+		switch {
+		case fence != "":
+			if marker != "" && marker[0] == fence[0] && len(marker) >= len(fence) &&
+				strings.Trim(strings.TrimSpace(line), marker[:1]) == "" {
+				fence = ""
+			}
+		case marker != "":
+			fence = marker
+		case line == agentHeading:
 			return true
 		}
 	}
 
 	return false
+}
+
+// fenceRun returns the leading run of three or more backticks or tildes on
+// line (after up to three spaces), or "".
+func fenceRun(line string) string {
+	rest := strings.TrimLeft(line, " ")
+	if len(line)-len(rest) > maxFenceIndent || rest == "" || (rest[0] != '`' && rest[0] != '~') {
+		return ""
+	}
+
+	run := rest[:len(rest)-len(strings.TrimLeft(rest, rest[:1]))]
+	if len(run) < minFenceRun {
+		return ""
+	}
+
+	return run
 }
 
 func printPlan(stdout io.Writer, p initPlan) {
