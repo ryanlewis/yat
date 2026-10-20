@@ -58,7 +58,7 @@ func main() {
 	if ctx.Command() == "agents" || strings.HasPrefix(ctx.Command(), "skill ") {
 		env := &cmd.SkillEnv{
 			JSON:        c.JSON,
-			Interactive: term.IsTerminal(int(os.Stdin.Fd())),
+			Interactive: term.IsTerminal(int(os.Stdin.Fd())), //nolint:gosec // file descriptors fit in int
 			Stdout:      os.Stdout,
 			Stderr:      os.Stderr,
 			Stdin:       os.Stdin,
