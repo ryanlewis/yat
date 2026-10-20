@@ -156,7 +156,7 @@ func (a *AddCmd) newItem(rc *RunContext) (*item.Item, error) {
 
 	for _, dep := range a.Dep {
 		if _, ok := rc.Graph.Item(dep); !ok {
-			return nil, fmt.Errorf("dependency %q not found", dep)
+			return nil, depNotFound(rc.skipped, dep)
 		}
 
 		if !slices.Contains(deps, dep) {
@@ -173,6 +173,21 @@ func (a *AddCmd) newItem(rc *RunContext) (*item.Item, error) {
 		Status:       item.Status(status),
 		Phase:        a.Phase,
 	}, nil
+}
+
+// depNotFound returns the error for a --dep that names no item, naming the
+// skipped file that may hold it, or else saying how many files were skipped.
+func depNotFound(skipped []string, dep string) error {
+	if path, ok := skippedWithID(skipped, dep); ok {
+		return fmt.Errorf("dependency %q not found; it may be in %s, which was skipped as unreadable", dep, path)
+	}
+
+	if len(skipped) > 0 {
+		return fmt.Errorf("dependency %q not found (%s skipped as unreadable; see warnings)",
+			dep, filesWere(len(skipped)))
+	}
+
+	return fmt.Errorf("dependency %q not found", dep)
 }
 
 // existingType returns typ in the casing existing items use for it (task →
