@@ -137,6 +137,7 @@ func TestAddCmd_SkippedFiles(t *testing.T) {
 	tests := []struct {
 		name    string
 		skipped []string // broken symlinks in tasks/
+		notMap  bool     // write tasks/README.md with scalar frontmatter
 		a       AddCmd
 		wantID  string
 		wantErr string
@@ -161,6 +162,12 @@ func TestAddCmd_SkippedFiles(t *testing.T) {
 			wantErr: "may hold the next TK- id: <dir>/tasks/BUG-009.md;",
 		},
 		{
+			name:   "a readable file whose frontmatter is not a mapping does not block",
+			notMap: true,
+			a:      AddCmd{Title: "New", Type: "Task"},
+			wantID: "TK-007",
+		},
+		{
 			name:    "--id still works",
 			skipped: []string{"notes.md"},
 			a:       AddCmd{Title: "New", Type: "Task", ID: "TK-100"},
@@ -176,6 +183,10 @@ func TestAddCmd_SkippedFiles(t *testing.T) {
 				if err := os.Symlink("nowhere.md", filepath.Join(dir, "tasks", name)); err != nil {
 					t.Fatal(err)
 				}
+			}
+
+			if tt.notMap {
+				writeItemFile(t, dir, "tasks/README.md", "---\nSome intro\n---\n")
 			}
 
 			rc, buf := newAddContext(t, dir, defaultConfig(), true)
