@@ -106,7 +106,7 @@ func TestLoadAll_ReturnsSkippedPaths(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		want := []string{broken, filepath.Join(dir, "list.md")}
+		want := []string{broken} // not list.md: it is readable and holds no item
 		if !slices.Equal(skipped, want) {
 			t.Errorf("skipped = %q, want %q", skipped, want)
 		}
