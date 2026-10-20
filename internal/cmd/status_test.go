@@ -103,3 +103,11 @@ func TestFormatTypeCounts_OneLine(t *testing.T) {
 		t.Errorf("got %q", got)
 	}
 }
+
+func TestFormatTypeCounts_CleanedTypesMerge(t *testing.T) {
+	got := formatTypeCounts(map[string]int{"Epic": 1, "Epic\n": 2, "Task\t": 1, "Task": 1})
+	want := map[string]bool{"2 tasks": true, "3 epics": true}
+	if len(got) != 2 || !want[got[0]] || !want[got[1]] {
+		t.Errorf("got %q", got)
+	}
+}
