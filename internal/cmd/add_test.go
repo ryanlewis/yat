@@ -168,6 +168,36 @@ func TestAddCmd_SkippedFiles(t *testing.T) {
 			wantID: "TK-007",
 		},
 		{
+			name:    "a skipped file numbered wider than the ids is not counted",
+			skipped: []string{"TK-20240115-retro.md"},
+			a:       AddCmd{Title: "New", Type: "Task"},
+			wantErr: "may hold the next TK- id: <dir>/tasks/TK-20240115-retro.md;",
+		},
+		{
+			name:    "with no ids of the prefix, four digits count",
+			skipped: []string{"BG-0042-crash.md"},
+			a:       AddCmd{Title: "New", Prefix: "BG-"},
+			wantID:  "BG-0043",
+		},
+		{
+			name:    "--id refuses an id a skipped file names",
+			skipped: []string{"TK-100-old.md"},
+			a:       AddCmd{Title: "New", Type: "Task", ID: "TK-100"},
+			wantErr: `item "TK-100" may already exist in <dir>/tasks/TK-100-old.md, which was skipped as unreadable`,
+		},
+		{
+			name:    "--id refuses an id a skipped file is named",
+			skipped: []string{"TK-100.md"},
+			a:       AddCmd{Title: "New", Type: "Task", ID: "TK-100"},
+			wantErr: `may already exist in <dir>/tasks/TK-100.md,`,
+		},
+		{
+			name:    "--id allows a longer id that starts the same",
+			skipped: []string{"TK-1000.md"},
+			a:       AddCmd{Title: "New", Type: "Task", ID: "TK-100"},
+			wantID:  "TK-100",
+		},
+		{
 			name:    "--id still works",
 			skipped: []string{"notes.md"},
 			a:       AddCmd{Title: "New", Type: "Task", ID: "TK-100"},
