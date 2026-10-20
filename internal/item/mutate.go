@@ -2,10 +2,13 @@ package item
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"regexp"
+	"syscall"
 
 	"gopkg.in/yaml.v3"
 )
@@ -42,7 +45,14 @@ func SetStatusWithOptions(path string, newStatus Status, opts MutateOptions) err
 		return fmt.Errorf("invalid status %q: must be todo, in-progress, or done", newStatus)
 	}
 
-	data, err := os.ReadFile(path)
+	// Resolve a symlink once, so the file read is the file written even if the
+	// link is changed in between.
+	target, err := filepath.EvalSymlinks(path)
+	if err != nil {
+		return fmt.Errorf("reading %s: %w", path, err)
+	}
+
+	data, err := os.ReadFile(target)
 	if err != nil {
 		return fmt.Errorf("reading %s: %w", path, err)
 	}
@@ -80,7 +90,7 @@ func SetStatusWithOptions(path string, newStatus Status, opts MutateOptions) err
 	buf.Write(updatedFM)
 	buf.Write(data[fmEnd:])
 
-	if err := writeFileAtomic(path, buf.Bytes()); err != nil {
+	if err := writeFileAtomic(target, buf.Bytes()); err != nil {
 		return fmt.Errorf("writing %s: %w", path, err)
 	}
 
@@ -89,67 +99,100 @@ func SetStatusWithOptions(path string, newStatus Status, opts MutateOptions) err
 
 // writeFileAtomic replaces the file at path with data, so a crash or a full disk
 // leaves either the old or the new contents, never a truncated file. It writes a
-// temp file next to the file, syncs it, gives it the file's mode and renames it
-// over the file. A symlink is followed and its target replaced, so the link stays
-// a link. Hard links to the file are not kept: the path gets a new inode.
+// temp file next to the file, syncs it, gives it the file's mode and, where it
+// can, its owner, and renames it over the file. path must not be a symlink.
+// Hard links to the file are not kept: the path gets a new inode.
+//
+// Where the temp file cannot be created or renamed over the file (a read-only
+// directory, a bind-mounted file), it falls back to writing the file in place.
 func writeFileAtomic(path string, data []byte) error {
-	target, err := filepath.EvalSymlinks(path)
+	info, err := writableInfo(path)
 	if err != nil {
 		return err
 	}
 
-	mode, err := writableMode(target)
-	if err != nil {
-		return err
-	}
+	dir := filepath.Dir(path)
 
 	// The name ends in .tmp, not .md, so LoadAll never picks it up.
-	tmp, err := os.CreateTemp(filepath.Dir(target), "."+filepath.Base(target)+".*.tmp")
+	tmp, err := os.CreateTemp(dir, "."+filepath.Base(path)+".*.tmp")
 	if err != nil {
+		if canWriteInPlace(err) {
+			return os.WriteFile(path, data, info.Mode().Perm())
+		}
+
 		return err
 	}
 
-	if err := writeAndClose(tmp, data, mode); err != nil {
+	if err := writeAndClose(tmp, data, info); err != nil {
 		_ = tmp.Close()
 		_ = os.Remove(tmp.Name())
 
 		return err
 	}
 
-	if err := os.Rename(tmp.Name(), target); err != nil {
+	if err := os.Rename(tmp.Name(), path); err != nil {
 		_ = os.Remove(tmp.Name())
+
+		if canWriteInPlace(err) {
+			return os.WriteFile(path, data, info.Mode().Perm())
+		}
 
 		return err
 	}
+
+	syncDir(dir)
 
 	return nil
 }
 
-// writableMode returns the permission bits of the file at path, refusing a file
-// the user cannot write: renaming over it needs only a writable directory, but
+// writableInfo returns the file info of the file at path, refusing a file the
+// user cannot write: renaming over it needs only a writable directory, but
 // writing it in place would fail.
-func writableMode(path string) (os.FileMode, error) {
+func writableInfo(path string) (fs.FileInfo, error) {
 	f, err := os.OpenFile(path, os.O_WRONLY, 0)
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
 	defer f.Close()
 
-	info, err := f.Stat()
-	if err != nil {
-		return 0, err
-	}
-
-	return info.Mode().Perm(), nil
+	return f.Stat()
 }
 
-// writeAndClose writes data to f, sets its mode, syncs it to disk and closes it.
-func writeAndClose(f *os.File, data []byte, mode os.FileMode) error {
+// canWriteInPlace reports whether err, from creating the temp file or renaming
+// it, is one where writing the file in place may still work.
+func canWriteInPlace(err error) bool {
+	for _, errno := range []syscall.Errno{syscall.EACCES, syscall.EPERM, syscall.EROFS, syscall.EXDEV, syscall.EBUSY} {
+		if errors.Is(err, errno) {
+			return true
+		}
+	}
+
+	return false
+}
+
+// syncDir flushes the directory so the rename survives a crash. It is best
+// effort: the file has already been replaced, and some filesystems do not
+// support syncing a directory.
+func syncDir(dir string) {
+	d, err := os.Open(dir)
+	if err != nil {
+		return
+	}
+
+	_ = d.Sync() //nolint:errcheck // best effort: the file is already replaced
+	_ = d.Close()
+}
+
+// writeAndClose writes data to f, gives it orig's owner (best effort) and mode,
+// syncs it to disk and closes it.
+func writeAndClose(f *os.File, data []byte, orig fs.FileInfo) error {
 	if _, err := f.Write(data); err != nil {
 		return err
 	}
 
-	if err := f.Chmod(mode); err != nil {
+	keepOwner(f, orig)
+
+	if err := f.Chmod(orig.Mode().Perm()); err != nil {
 		return err
 	}
 
