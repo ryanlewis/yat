@@ -316,6 +316,10 @@ func TestSetStatusWithOptions_EscapedOrExplicitKey(t *testing.T) {
 		{name: "escaped", field: "status", fm: "id: A\n\"st\\x61tus\": todo # c\n", want: "id: A\n\"st\\x61tus\": done # c\n"},
 		{name: "escaped alias", field: "state", fm: "id: A\n\"st\\x61te\": todo\n", want: "id: A\n\"st\\x61te\": done\n"},
 		{name: "explicit", field: "status", fm: "id: A\n? status\n: todo\n", want: "id: A\n? status\n: done\n"},
+		{
+			name: "alias node key named status", field: "status", fm: "id: A\nstatus: todo\nx: &status foo\n*status : bar\n",
+			want: "id: A\nstatus: done\nx: &status foo\n*status : bar\n",
+		},
 		{name: "explicit quoted value", field: "status", fm: "? status\n: 'todo' # c\nid: A\n", want: "? status\n: done # c\nid: A\n"},
 		{name: "explicit value on next line", field: "status", fm: "? status\n:\n  todo\n", want: "? status\n:\n  done\n"},
 		{name: "explicit CRLF", field: "status", fm: "id: A\r\n? status\r\n: todo\r\n", want: "id: A\r\n? status\r\n: done\r\n"},
