@@ -255,3 +255,126 @@ func TestSetStatus_AllTransitions(t *testing.T) {
 		})
 	}
 }
+
+// --- Byte preservation regressions: SetStatus must change only the status value ---
+
+func TestSetStatus_PreservesSurroundingBytes(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{
+			name:  "CRLF closing delimiter",
+			input: "---\r\nid: TK-001\r\nstatus: todo\r\n---\r\nBody.\r\n",
+			want:  "---\r\nid: TK-001\r\nstatus: in-progress\r\n---\r\nBody.\r\n",
+		},
+		{
+			name:  "no trailing newline after closing delimiter",
+			input: "---\nid: TK-001\nstatus: todo\n---",
+			want:  "---\nid: TK-001\nstatus: in-progress\n---",
+		},
+		{
+			name:  "UTF-8 BOM",
+			input: "\xef\xbb\xbf---\nid: TK-001\nstatus: todo\n---\nBody.\n",
+			want:  "\xef\xbb\xbf---\nid: TK-001\nstatus: in-progress\n---\nBody.\n",
+		},
+		{
+			name:  "leading blank lines",
+			input: "\n\n---\nid: TK-001\nstatus: todo\n---\nBody.\n",
+			want:  "\n\n---\nid: TK-001\nstatus: in-progress\n---\nBody.\n",
+		},
+		{
+			name:  "empty status value does not swallow the next line",
+			input: "---\nid: TK-001\nstatus:\ntitle: Alpha\n---\nBody.\n",
+			want:  "---\nid: TK-001\nstatus: in-progress\ntitle: Alpha\n---\nBody.\n",
+		},
+		{
+			name:  "empty status value with CRLF",
+			input: "---\r\nid: TK-001\r\nstatus:\r\ntitle: Alpha\r\n---\r\n",
+			want:  "---\r\nid: TK-001\r\nstatus: in-progress\r\ntitle: Alpha\r\n---\r\n",
+		},
+		{
+			name:  "empty status value with comment",
+			input: "---\nid: TK-001\nstatus: # pick later\n---\n",
+			want:  "---\nid: TK-001\nstatus: in-progress # pick later\n---\n",
+		},
+		{
+			name:  "status value with trailing comment",
+			input: "---\nid: TK-001\nstatus: todo # was draft\n---\n",
+			want:  "---\nid: TK-001\nstatus: in-progress # was draft\n---\n",
+		},
+		{
+			name:  "status value on the next line",
+			input: "---\nid: TK-001\nstatus:\n  todo\ntitle: Alpha\n---\n",
+			want:  "---\nid: TK-001\nstatus: in-progress\ntitle: Alpha\n---\n",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "test.md")
+			if err := os.WriteFile(path, []byte(tt.input), 0o644); err != nil {
+				t.Fatal(err)
+			}
+
+			if err := SetStatus(path, StatusInProgress); err != nil {
+				t.Fatalf("SetStatus: %v", err)
+			}
+
+			data, _ := os.ReadFile(path)
+			if string(data) != tt.want {
+				t.Errorf("got:\n%q\nwant:\n%q", data, tt.want)
+			}
+		})
+	}
+}
+
+func TestSetStatusWithOptions_MultiWordStatus(t *testing.T) {
+	opts := MutateOptions{ValidStatuses: NewStatusSet([]string{"not started", "in flight", "shipped"})}
+
+	tests := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{
+			name:  "double-quoted",
+			input: "---\nid: TK-001\nstatus: \"not started\"\n---\n",
+			want:  "---\nid: TK-001\nstatus: in flight\n---\n",
+		},
+		{
+			name:  "single-quoted",
+			input: "---\nid: TK-001\nstatus: 'not started'\n---\n",
+			want:  "---\nid: TK-001\nstatus: in flight\n---\n",
+		},
+		{
+			name:  "plain",
+			input: "---\nid: TK-001\nstatus: not started # note\n---\n",
+			want:  "---\nid: TK-001\nstatus: in flight # note\n---\n",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "test.md")
+			if err := os.WriteFile(path, []byte(tt.input), 0o644); err != nil {
+				t.Fatal(err)
+			}
+
+			if err := SetStatusWithOptions(path, Status("in flight"), opts); err != nil {
+				t.Fatalf("SetStatusWithOptions: %v", err)
+			}
+
+			data, _ := os.ReadFile(path)
+			if string(data) != tt.want {
+				t.Errorf("got:\n%q\nwant:\n%q", data, tt.want)
+			}
+
+			it, err := ParseWithOptions(data, path, ParseOptions{ValidStatuses: opts.ValidStatuses})
+			if err != nil || it == nil || it.Status != "in flight" {
+				t.Errorf("rewritten file does not parse back to \"in flight\": item=%+v err=%v", it, err)
+			}
+		})
+	}
+}
