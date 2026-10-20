@@ -80,7 +80,7 @@ Record new work that depends on an existing item:
 id=$(yat add "Write the migration" --type Task --dep TK-004 --body "Details..." --json | jq -r '.id')
 ```
 
-The id is the next number for the prefix items of that `--type` use (`TK-007` after `TK-006`). The body comes from `--body`, or from stdin when it is piped in.
+The id is the next number for the prefix items of that `--type` use (`TK-007` after `TK-006`). The body comes from `--body`, or from stdin when it is piped in. Pass `--body ""` for an empty body when your stdin may be an open pipe, so yat does not wait on it.
 
 See what is ready and what is stuck:
 
