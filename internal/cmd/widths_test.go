@@ -154,7 +154,7 @@ func TestTabularOutput_TitlesWithBreaks(t *testing.T) {
 }
 
 func TestOneLine_VerticalWhitespace(t *testing.T) {
-	in := "a\vb\fc\u0085d e f\r\ng\th"
+	in := "a\vb\fc\u0085d\u2028e\u2029f\r\ng\th"
 	if got, want := oneLine(in), "a b c d e f g h"; got != want {
 		t.Errorf("oneLine(%q) = %q, want %q", in, got, want)
 	}
@@ -169,7 +169,7 @@ func TestSingleItemOutput_TitlesWithBreaks(t *testing.T) {
 			{ID: "A", Title: "First\nitem", Status: item.StatusTodo,
 				FilePath: writeItemFile(t, dir, "a.md", "---\nid: A\ntitle: x\nstatus: todo\n---\n")},
 			{ID: "B", Title: "Second\r\nitem", Status: item.StatusTodo, Dependencies: []string{"A"}},
-			{ID: "C", Title: "Third item", Status: item.StatusTodo, Dependencies: []string{"A", "D"}},
+			{ID: "C", Title: "Third\u2028item", Status: item.StatusTodo, Dependencies: []string{"A", "D"}},
 			{ID: "D", Title: "Fourth", Status: item.StatusTodo},
 		}
 	}
