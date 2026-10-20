@@ -15,6 +15,28 @@
       ],
       "depNameTemplate": "golang.org/x/vuln",
       "datasourceTemplate": "go"
+    },
+    {
+      "customType": "regex",
+      "description": "golangci-lint version pinned in the Makefile, kept in step with the CI pin",
+      "managerFilePatterns": [
+        "/^Makefile$/"
+      ],
+      "matchStrings": [
+        "GOLANGCI_LINT_VERSION=(?<currentValue>v[\\w.+-]+)"
+      ],
+      "depNameTemplate": "golangci/golangci-lint",
+      "datasourceTemplate": "github-releases"
+    }
+  ],
+  "packageRules": [
+    {
+      "description": "Bump the golangci-lint pins in the Makefile and ci.yml in one PR",
+      "matchDepNames": [
+        "golangci/golangci-lint"
+      ],
+      "groupName": "golangci-lint",
+      "groupSlug": "golangci-lint"
     }
   ]
 }
