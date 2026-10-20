@@ -9,6 +9,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/ergochat/readline"
@@ -27,6 +28,7 @@ type initJSON struct {
 	Created    bool     `json:"created"`
 	SampleItem string   `json:"sample_item,omitempty"`
 	AgentFiles []string `json:"agent_files,omitempty"`
+	Skipped    []string `json:"skipped_agent_files,omitempty"`
 }
 
 var agentMDFiles = []string{"CLAUDE.md", "AGENTS.md"}
@@ -128,7 +130,7 @@ func (i *InitCmd) Run(jsonMode bool, stdout io.Writer, stdin io.Reader) error {
 		return err
 	}
 
-	return printResult(jsonMode, stdout, plan)
+	return printResult(jsonMode, stdout, plan, skipped)
 }
 
 func existingConfig() string {
@@ -159,15 +161,22 @@ func buildInitPlan(dir string) initPlan {
 }
 
 // detectAgentFiles returns the agent files that exist and lack a yat block,
-// and those that already have one and are left alone.
+// and those that already have one and are left alone. A name that is the same
+// file as an earlier one (e.g. AGENTS.md linked to CLAUDE.md) is dropped.
 func detectAgentFiles() (found, skipped []string) {
+	var seen []os.FileInfo
+
 	for _, name := range agentMDFiles {
-		data, err := os.ReadFile(name)
-		if err != nil {
+		info, err := os.Stat(name)
+		if err != nil || slices.ContainsFunc(seen, func(s os.FileInfo) bool { return os.SameFile(s, info) }) {
 			continue
 		}
 
-		if hasAgentHeading(string(data)) {
+		seen = append(seen, info)
+
+		// An unreadable file is still offered: the append may work, and if not
+		// the user sees why.
+		if data, err := os.ReadFile(name); err == nil && hasAgentHeading(string(data)) {
 			skipped = append(skipped, name)
 		} else {
 			found = append(found, name)
@@ -264,13 +273,14 @@ func appendAgentInstructions(path string) error {
 	return nil
 }
 
-func printResult(jsonMode bool, stdout io.Writer, p initPlan) error {
+func printResult(jsonMode bool, stdout io.Writer, p initPlan, skipped []string) error {
 	if jsonMode {
 		result := initJSON{
 			ConfigFile: config.DefaultConfigFile,
 			Dir:        p.dir,
 			Created:    p.createDir,
 			AgentFiles: p.agentFiles,
+			Skipped:    skipped,
 		}
 		if p.createSample {
 			result.SampleItem = p.samplePath
