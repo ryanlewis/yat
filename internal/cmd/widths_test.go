@@ -152,3 +152,51 @@ func TestTabularOutput_TitlesWithBreaks(t *testing.T) {
 		t.Errorf("expected raw title in JSON, got:\n%s", buf.String())
 	}
 }
+
+func TestOneLine_VerticalWhitespace(t *testing.T) {
+	in := "a\vb\fc\u0085d e f\r\ng\th"
+	if got, want := oneLine(in), "a b c d e f g h"; got != want {
+		t.Errorf("oneLine(%q) = %q, want %q", in, got, want)
+	}
+}
+
+// TestSingleItemOutput_TitlesWithBreaks checks that blocked, show, next,
+// start and complete print a title with line breaks on one line.
+func TestSingleItemOutput_TitlesWithBreaks(t *testing.T) {
+	broken := func(t *testing.T) []*item.Item {
+		dir := t.TempDir()
+		return []*item.Item{
+			{ID: "A", Title: "First\nitem", Status: item.StatusTodo,
+				FilePath: writeItemFile(t, dir, "a.md", "---\nid: A\ntitle: x\nstatus: todo\n---\n")},
+			{ID: "B", Title: "Second\r\nitem", Status: item.StatusTodo, Dependencies: []string{"A"}},
+			{ID: "C", Title: "Third item", Status: item.StatusTodo, Dependencies: []string{"A", "D"}},
+			{ID: "D", Title: "Fourth", Status: item.StatusTodo},
+		}
+	}
+
+	for _, tc := range []struct {
+		name string
+		cmd  interface{ Run(*RunContext) error }
+		want []string
+	}{
+		{"blocked", &BlockedCmd{}, []string{"B  Second item\n", "C  Third item\n"}},
+		{"show", &ShowCmd{ID: "A"}, []string{"A: First item\n"}},
+		{"next", &NextCmd{}, []string{"A: First item\n"}},
+		{"start", &StartCmd{ID: "A"}, []string{"Started A: First item\n"}},
+		{"complete", &CompleteCmd{ID: "A"}, []string{
+			"Completed A: First item\n", "B  Second item\n", "C  Third item (waiting on: D)\n",
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			rc, buf := newTestContext(t, broken(t), false)
+			if err := tc.cmd.Run(rc); err != nil {
+				t.Fatalf("Run: %v", err)
+			}
+			for _, w := range tc.want {
+				if !strings.Contains(buf.String(), w) {
+					t.Errorf("expected %q in output, got:\n%s", w, buf.String())
+				}
+			}
+		})
+	}
+}

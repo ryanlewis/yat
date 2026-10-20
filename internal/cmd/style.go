@@ -62,7 +62,7 @@ func newStyles(w io.Writer, statuses config.StatusGroups) *Styles {
 
 // Header styles an "ID: Title" header line.
 func (s *Styles) Header(id, title string) string {
-	return s.bold.Render(id+": "+title) + "\n"
+	return s.bold.Render(id+": "+oneLine(title)) + "\n"
 }
 
 // GroupHeader styles a section header like "READY" or "BLOCKED".
@@ -157,13 +157,17 @@ func padWidth(s string, targetWidth int) string {
 	return padRight(s, lipgloss.Width(s), targetWidth)
 }
 
-// oneLine replaces newlines and tabs with spaces so a title stays on one line
-// and its width can be counted when padding columns.
+// oneLine replaces line breaks, tabs and other vertical whitespace with spaces
+// so a title stays on one line and its width can be counted when padding
+// columns.
 func oneLine(s string) string {
 	return lineBreaks.Replace(s)
 }
 
-var lineBreaks = strings.NewReplacer("\r\n", " ", "\n", " ", "\r", " ", "\t", " ")
+var lineBreaks = strings.NewReplacer(
+	"\r\n", " ", "\n", " ", "\r", " ", "\t", " ", "\v", " ", "\f", " ",
+	"\u0085", " ", "\u2028", " ", "\u2029", " ",
+)
 
 // displayWidth returns the number of terminal columns s occupies.
 func displayWidth(s string) int {
