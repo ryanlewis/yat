@@ -302,3 +302,68 @@ func TestSetStatusWithOptions_QuotedOrSpacedKey(t *testing.T) {
 		})
 	}
 }
+
+// A key written with escapes or in explicit "? key" form loads, so it must also
+// be written, keeping its spelling; a value that cannot be found byte for byte
+// is refused, leaving the file untouched.
+func TestSetStatusWithOptions_EscapedOrExplicitKey(t *testing.T) {
+	tests := []struct {
+		name  string
+		field string
+		fm    string
+		want  string // "" when the write is refused
+	}{
+		{name: "escaped", field: "status", fm: "id: A\n\"st\\x61tus\": todo # c\n", want: "id: A\n\"st\\x61tus\": done # c\n"},
+		{name: "escaped alias", field: "state", fm: "id: A\n\"st\\x61te\": todo\n", want: "id: A\n\"st\\x61te\": done\n"},
+		{name: "explicit", field: "status", fm: "id: A\n? status\n: todo\n", want: "id: A\n? status\n: done\n"},
+		{name: "explicit quoted value", field: "status", fm: "? status\n: 'todo' # c\nid: A\n", want: "? status\n: done # c\nid: A\n"},
+		{name: "explicit value on next line", field: "status", fm: "? status\n:\n  todo\n", want: "? status\n:\n  done\n"},
+		{name: "explicit CRLF", field: "status", fm: "id: A\r\n? status\r\n: todo\r\n", want: "id: A\r\n? status\r\n: done\r\n"},
+		{
+			name:  "after a line separator",
+			field: "status",
+			fm:    "title: \"a\u2028b\"\n? status\n: todo\n",
+			want:  "title: \"a\u2028b\"\n? status\n: done\n",
+		},
+		{name: "anchored value", field: "status", fm: "? status\n: &s todo\n"},
+		{name: "tagged value", field: "status", fm: "? status\n: !!str todo\n"},
+		{name: "multi-line value", field: "status", fm: "? status\n: in\n  progress\n"},
+		{name: "multi-line quoted value", field: "status", fm: "? status\n: \"to\n  do\"\n"},
+		{name: "empty value", field: "status", fm: "id: A\n? status\n"},
+		{name: "flow mapping", field: "status", fm: "{id: A, status: todo}\n"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "a.md")
+			orig := "---\n" + tt.fm + "---\n\nBody.\n"
+			if err := os.WriteFile(path, []byte(orig), 0o644); err != nil {
+				t.Fatalf("writing test file: %v", err)
+			}
+
+			err := SetStatusWithOptions(path, StatusDone, MutateOptions{FieldName: tt.field})
+
+			want := orig
+			if tt.want == "" {
+				if err == nil || !strings.Contains(err.Error(), "status key form not supported for writing") {
+					t.Errorf("err = %v, want a key form error", err)
+				}
+			} else {
+				if err != nil {
+					t.Fatalf("SetStatusWithOptions: %v", err)
+				}
+
+				want = "---\n" + tt.want + "---\n\nBody.\n"
+			}
+
+			data, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatalf("reading back: %v", err)
+			}
+
+			if string(data) != want {
+				t.Errorf("got:\n%q\nwant:\n%q", data, want)
+			}
+		})
+	}
+}
