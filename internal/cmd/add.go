@@ -76,15 +76,11 @@ func (a *AddCmd) Run(rc *RunContext) error {
 	// Another yat add may have written an item since rc was loaded. Hold the
 	// lock while reloading, picking the id and writing, so two adds never pick
 	// the same id.
-	unlock, err := item.LockDir(rc.Dir)
+	unlock, err := rc.lockAndReload()
 	if err != nil {
 		return err
 	}
 	defer unlock()
-
-	if rc.Items, rc.skipped, err = item.ReloadWithOptions(rc.Dir, rc.parseOpts); err != nil {
-		return err
-	}
 
 	if it.ID, err = a.resolveID(rc); err != nil {
 		return err

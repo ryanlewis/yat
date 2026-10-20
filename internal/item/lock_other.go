@@ -47,7 +47,7 @@ func LockDir(dir string) (func(), error) {
 		}
 
 		if time.Now().After(deadline) {
-			return nil, fmt.Errorf("timed out waiting for %s; if no other yat add is running, remove it", path)
+			return nil, fmt.Errorf("timed out waiting for %s; if no other yat command is running, remove it", path)
 		}
 
 		time.Sleep(lockPoll)
