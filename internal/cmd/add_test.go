@@ -288,3 +288,15 @@ func TestSlugify(t *testing.T) {
 		}
 	}
 }
+
+func TestAddCmd_PrefixEndingInDigit(t *testing.T) {
+	dir := t.TempDir()
+	writeItemFile(t, dir, "V2001-a.md", "---\nid: V2001\nstatus: todo\n---\n")
+	rc, _ := newAddContext(t, dir, defaultConfig(), false)
+
+	runAdd(t, rc, &AddCmd{Title: "b", Prefix: "V2"})
+
+	if _, err := os.Stat(filepath.Join(dir, "V2002-b.md")); err != nil {
+		t.Errorf("expected V2002 after V2001: %v", err)
+	}
+}
