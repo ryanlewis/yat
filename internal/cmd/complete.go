@@ -87,13 +87,13 @@ func (c *CompleteCmd) Run(rc *RunContext) error {
 		return rc.writeJSON(out)
 	}
 
-	rc.printf("Completed %s: %s\n", it.ID, it.Title)
+	rc.printf("Completed %s: %s\n", it.ID, oneLine(it.Title))
 
 	if len(unblocked) > 0 {
 		rc.printf("\nNow unblocked:\n")
 
 		for _, u := range unblocked {
-			rc.printf("  %s  %s\n", u.ID, u.Title)
+			rc.printf("  %s  %s\n", u.ID, oneLine(u.Title))
 		}
 	}
 
@@ -102,7 +102,7 @@ func (c *CompleteCmd) Run(rc *RunContext) error {
 
 		for _, b := range stillBlocked {
 			waiting := rc.Graph.WaitingOn(b.ID)
-			rc.printf("  %s  %s (waiting on: %s)\n", b.ID, b.Title, strings.Join(waiting, ", "))
+			rc.printf("  %s  %s (waiting on: %s)\n", b.ID, oneLine(b.Title), strings.Join(waiting, ", "))
 		}
 	}
 

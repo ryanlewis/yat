@@ -67,7 +67,7 @@ func (s *StartCmd) Run(rc *RunContext) error {
 		})
 	}
 
-	rc.printf("Started %s: %s\n", it.ID, it.Title)
+	rc.printf("Started %s: %s\n", it.ID, oneLine(it.Title))
 
 	if it.Body != "" {
 		rc.printf("\n%s", it.Body)
