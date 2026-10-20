@@ -603,3 +603,82 @@ func TestInitCmd_AgentFiles_AllSkippedNoPrompt(t *testing.T) {
 		t.Errorf("CLAUDE.md was modified:\n%s", data)
 	}
 }
+
+func TestInitCmd_AgentFiles_SymlinkAppendedOnce(t *testing.T) {
+	dir := chdirTemp(t)
+
+	os.WriteFile(filepath.Join(dir, "CLAUDE.md"), []byte("# Claude\n"), 0o644)
+	if err := os.Symlink("CLAUDE.md", filepath.Join(dir, "AGENTS.md")); err != nil {
+		t.Skipf("symlink: %v", err)
+	}
+
+	var buf bytes.Buffer
+	stdin := strings.NewReader("y\ny\n") // accept agent files, accept plan
+
+	cmd := &InitCmd{Dir: "spec"}
+	if err := cmd.Run(false, &buf, stdin); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+
+	data, err := os.ReadFile(filepath.Join(dir, "CLAUDE.md"))
+	if err != nil {
+		t.Fatalf("reading CLAUDE.md: %v", err)
+	}
+	if n := strings.Count(string(data), "## yat (issue tracker)"); n != 1 {
+		t.Errorf("expected one yat block, got %d:\n%s", n, data)
+	}
+}
+
+func TestInitCmd_AgentFiles_UnreadableStillOffered(t *testing.T) {
+	dir := chdirTemp(t)
+
+	path := filepath.Join(dir, "CLAUDE.md")
+	os.WriteFile(path, []byte("# Claude\n"), 0o200)
+	if _, err := os.ReadFile(path); err == nil {
+		t.Skip("file is readable anyway (running as root?)")
+	}
+
+	var buf bytes.Buffer
+	stdin := strings.NewReader("y\ny\n") // accept agent files, accept plan
+
+	cmd := &InitCmd{Dir: "spec"}
+	if err := cmd.Run(false, &buf, stdin); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+
+	if !strings.Contains(buf.String(), "updated: CLAUDE.md") {
+		t.Errorf("expected CLAUDE.md to be updated, got:\n%s", buf.String())
+	}
+}
+
+func TestInitCmd_AgentFiles_SkippedJSON(t *testing.T) {
+	dir := chdirTemp(t)
+
+	os.WriteFile(filepath.Join(dir, "CLAUDE.md"), []byte("# Claude\n"+agentPointer), 0o644)
+
+	var buf bytes.Buffer
+	stdin := strings.NewReader("y\n") // accept plan
+
+	cmd := &InitCmd{Dir: "spec"}
+	if err := cmd.Run(true, &buf, stdin); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+
+	output := buf.String()
+	jsonStart := strings.LastIndex(output, "{")
+	if jsonStart < 0 {
+		t.Fatalf("no JSON found in output:\n%s", output)
+	}
+
+	var result initJSON
+	if err := json.Unmarshal([]byte(output[jsonStart:]), &result); err != nil {
+		t.Fatalf("JSON unmarshal: %v", err)
+	}
+
+	if len(result.Skipped) != 1 || result.Skipped[0] != "CLAUDE.md" {
+		t.Errorf("Skipped = %v, want [CLAUDE.md]", result.Skipped)
+	}
+	if len(result.AgentFiles) != 0 {
+		t.Errorf("AgentFiles = %v, want none", result.AgentFiles)
+	}
+}

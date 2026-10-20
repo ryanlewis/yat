@@ -8,7 +8,7 @@ yat is a CLI issue tracker. Items (stories, tasks, spikes) are Markdown files wi
 - **Writes change item files in place**: `yat start <id>` and `yat complete <id>` rewrite the item's `status` field and keep the rest of the file as it was.
 - **`yat add "<title>"` creates a new item file** and never overwrites one. Run it when asked to record new work.
 - **Read-only projects**: when `.yat.yaml` has `readonly: true`, `add`, `start` and `complete` fail with `project is read-only (readonly: true in .yat.yaml)`. This is expected, not a fault. Do the work the item describes and skip the status update. Do not edit the config or the item's frontmatter to get around it.
-- `yat init` creates `.yat.yaml`, an items directory and an example item, and can append a short pointer to this skill to `CLAUDE.md` / `AGENTS.md`. Run it only when asked.
+- `yat init` creates `.yat.yaml`, an items directory and an example item, and can append a short pointer to this skill to `CLAUDE.md` / `AGENTS.md` (a file that already has a `## yat (issue tracker)` section is skipped and listed under `skipped_agent_files` in `--json`). Run it only when asked.
 - `yat skill install` / `yat skill uninstall` write to the agent's config directory. Do not run them unasked.
 
 ## Workflow
