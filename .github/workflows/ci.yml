@@ -37,6 +37,7 @@ jobs:
       # bad config key is still reported.
       - name: Verify golangci-lint config
         if: ${{ !cancelled() }}
+        shell: bash
         run: |
           shopt -s nullglob
           bins=("$HOME"/golangci-lint-*/golangci-lint)
@@ -46,7 +47,7 @@ jobs:
           fi
           minor=$("${bins[0]}" version --short | cut -d. -f1,2)
           schema="$RUNNER_TEMP/golangci.jsonschema.json"
-          curl -fsSL --retry 5 --retry-all-errors --max-time 30 -o "$schema" \
+          curl -fsSL --retry 5 --max-time 30 -o "$schema" \
             "https://golangci-lint.run/jsonschema/golangci.v${minor}.jsonschema.json"
           "${bins[0]}" config verify --schema "file://$schema"
 
