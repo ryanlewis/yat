@@ -292,6 +292,8 @@ func TestExtractHeading(t *testing.T) {
 		{"heading inside code block", "```\n# Not a heading\n```\n## Real Title", "Real Title"},
 		{"heading inside code block with lang", "```python\n# Comment\n```\n# Title", "Title"},
 		{"unclosed code block hides all", "```\n# Hidden", ""},
+		{"heading inside tilde fence", "~~~\n# Not a heading\n~~~\n## Real Title", "Real Title"},
+		{"backticks do not close tilde fence", "~~~\n```\n# Hidden\n~~~\n# Title", "Title"},
 	}
 
 	for _, tt := range tests {

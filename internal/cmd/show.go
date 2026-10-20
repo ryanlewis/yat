@@ -28,8 +28,9 @@ func (s *ShowCmd) Run(rc *RunContext) error {
 		return fmt.Errorf("item %q not found", s.ID)
 	}
 
+	deps := rc.Graph.DependenciesOf(item.ID)
+
 	if rc.JSON {
-		deps := item.Dependencies
 		if deps == nil {
 			deps = []string{}
 		}
@@ -62,10 +63,10 @@ func (s *ShowCmd) Run(rc *RunContext) error {
 		fmt.Fprintf(rc.Stdout, "%s\n", formatExtra(item.Extra))
 	}
 
-	if len(item.Dependencies) > 0 {
+	if len(deps) > 0 {
 		rc.printf("%s", sty.Dim("Dependencies:"))
 
-		for _, dep := range item.Dependencies {
+		for _, dep := range deps {
 			fmt.Fprintf(rc.Stdout, " %s", dep)
 		}
 

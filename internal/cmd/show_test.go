@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
+
+	"github.com/ryanlewis/yat/internal/item"
 )
 
 func TestShowCmd_Text(t *testing.T) {
@@ -51,5 +53,35 @@ func TestShowCmd_JSON(t *testing.T) {
 	}
 	if len(result.Dependencies) != 2 {
 		t.Errorf("Dependencies = %v, want 2 items", result.Dependencies)
+	}
+}
+
+func TestShowCmd_DuplicateDependencies(t *testing.T) {
+	items := []*item.Item{
+		{ID: "A", Title: "First", Status: item.StatusTodo},
+		{ID: "B", Title: "Second", Status: item.StatusTodo, Dependencies: []string{"A", "A"}},
+	}
+
+	rc, buf := newTestContext(t, items, false)
+	if err := (&ShowCmd{ID: "B"}).Run(rc); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+
+	if strings.Contains(buf.String(), "A A") {
+		t.Errorf("dependency listed twice:\n%s", buf.String())
+	}
+
+	rc, buf = newTestContext(t, items, true)
+	if err := (&ShowCmd{ID: "B"}).Run(rc); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+
+	var result showJSON
+	if err := json.Unmarshal(buf.Bytes(), &result); err != nil {
+		t.Fatalf("JSON unmarshal: %v", err)
+	}
+
+	if len(result.Dependencies) != 1 || result.Dependencies[0] != "A" {
+		t.Errorf("Dependencies = %v, want [A]", result.Dependencies)
 	}
 }

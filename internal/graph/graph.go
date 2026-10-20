@@ -31,6 +31,19 @@ func (g *Graph) Item(id string) (*item.Item, bool) {
 	return i, ok
 }
 
+// DependenciesOf returns the IDs of items the given item depends on, each listed once.
+func (g *Graph) DependenciesOf(id string) []string {
+	deps := g.forward[id]
+	if deps == nil {
+		return nil
+	}
+
+	out := make([]string, len(deps))
+	copy(out, deps)
+
+	return out
+}
+
 // DependentsOf returns the IDs of items that depend on the given item.
 func (g *Graph) DependentsOf(id string) []string {
 	deps := g.reverse[id]
