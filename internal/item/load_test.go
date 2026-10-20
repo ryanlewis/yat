@@ -2,9 +2,11 @@ package item
 
 import (
 	"bytes"
+	"io"
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"testing"
 )
 
@@ -22,7 +24,7 @@ func testdataDir(t *testing.T) string {
 func TestLoadAll(t *testing.T) {
 	dir := testdataDir(t)
 
-	items, err := LoadAll(dir)
+	items, _, err := LoadAll(dir)
 	if err != nil {
 		t.Fatalf("LoadAll: %v", err)
 	}
@@ -41,7 +43,7 @@ func TestLoadAll(t *testing.T) {
 func TestLoadAllIndex(t *testing.T) {
 	dir := testdataDir(t)
 
-	items, err := LoadAll(dir)
+	items, _, err := LoadAll(dir)
 	if err != nil {
 		t.Fatalf("LoadAll: %v", err)
 	}
@@ -78,9 +80,37 @@ func loadWithWarnings(t *testing.T, dir string) ([]*Item, string, error) {
 
 	t.Cleanup(func() { warnOut = old })
 
-	items, err := LoadAll(dir)
+	items, _, err := LoadAll(dir)
 
 	return items, buf.String(), err
+}
+
+func TestLoadAll_ReturnsSkippedPaths(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, filepath.Join(dir, "a.md"), "---\nid: A-1\n---\n")
+	writeFile(t, filepath.Join(dir, "list.md"), "---\n- a\n---\n")
+
+	broken := filepath.Join(dir, "broken.md")
+	if err := os.Symlink("nowhere.md", broken); err != nil {
+		t.Fatal(err)
+	}
+
+	old := warnOut
+	warnOut = io.Discard
+
+	t.Cleanup(func() { warnOut = old })
+
+	for _, load := range []func(string, ParseOptions) ([]*Item, []string, error){LoadAllWithOptions, ReloadWithOptions} {
+		_, skipped, err := load(dir, ParseOptions{})
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		want := []string{broken, filepath.Join(dir, "list.md")}
+		if !slices.Equal(skipped, want) {
+			t.Errorf("skipped = %q, want %q", skipped, want)
+		}
+	}
 }
 
 func writeFile(t *testing.T, path, content string) {

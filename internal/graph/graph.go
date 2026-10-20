@@ -2,12 +2,17 @@
 package graph
 
 import (
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
 
 	"github.com/ryanlewis/yat/internal/item"
 )
+
+// ErrUnknownDependency is wrapped by the error Build returns when an item
+// depends on an id no item has.
+var ErrUnknownDependency = errors.New("unknown dependency")
 
 // Graph holds the dependency relationships between items.
 type Graph struct {
@@ -131,7 +136,7 @@ func Build(items []*item.Item, opts ...BuildOption) (*Graph, error) {
 	for id, deps := range g.forward {
 		for _, dep := range deps {
 			if _, ok := g.items[dep]; !ok {
-				return nil, fmt.Errorf("item %s has unknown dependency %q", id, dep)
+				return nil, fmt.Errorf("item %s has %w %q", id, ErrUnknownDependency, dep)
 			}
 
 			g.reverse[dep] = append(g.reverse[dep], id)

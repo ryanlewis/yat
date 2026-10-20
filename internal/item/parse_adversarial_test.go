@@ -564,7 +564,7 @@ func TestParse_LooksLikeItem(t *testing.T) {
 // --- LoadAll edge cases ---
 
 func TestLoadAll_NonexistentDir(t *testing.T) {
-	_, err := LoadAll("/nonexistent/path/that/does/not/exist")
+	_, _, err := LoadAll("/nonexistent/path/that/does/not/exist")
 	if err == nil {
 		t.Fatal("expected error for nonexistent directory")
 	}
@@ -572,7 +572,7 @@ func TestLoadAll_NonexistentDir(t *testing.T) {
 
 func TestLoadAll_EmptyDir(t *testing.T) {
 	dir := t.TempDir()
-	items, err := LoadAll(dir)
+	items, _, err := LoadAll(dir)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -587,7 +587,7 @@ func TestLoadAll_NonMDFilesIgnored(t *testing.T) {
 	os.WriteFile(filepath.Join(dir, "data.json"), []byte("{}"), 0o644)
 	os.WriteFile(filepath.Join(dir, "item.md"), []byte("---\nid: TK-001\nstatus: todo\n---\n"), 0o644)
 
-	items, err := LoadAll(dir)
+	items, _, err := LoadAll(dir)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -604,7 +604,7 @@ func TestLoadAll_NestedDirectories(t *testing.T) {
 	os.WriteFile(filepath.Join(dir, "root.md"), []byte("---\nid: ROOT\nstatus: todo\n---\n"), 0o644)
 	os.WriteFile(filepath.Join(sub, "nested.md"), []byte("---\nid: NESTED\nstatus: todo\n---\n"), 0o644)
 
-	items, err := LoadAll(dir)
+	items, _, err := LoadAll(dir)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -620,7 +620,7 @@ func TestLoadAll_InvalidItemStopsLoad(t *testing.T) {
 	// Invalid item (bad status)
 	os.WriteFile(filepath.Join(dir, "b.md"), []byte("---\nid: B\nstatus: banana\n---\n"), 0o644)
 
-	_, err := LoadAll(dir)
+	_, _, err := LoadAll(dir)
 	if err == nil {
 		t.Fatal("expected error from invalid item")
 	}
@@ -635,7 +635,7 @@ func TestLoadAll_MissingIDWarnsButContinues(t *testing.T) {
 	// Item-like but no ID — should warn but not fail
 	os.WriteFile(filepath.Join(dir, "b.md"), []byte("---\ntype: Task\nstatus: todo\n---\n"), 0o644)
 
-	items, err := LoadAll(dir)
+	items, _, err := LoadAll(dir)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -649,7 +649,7 @@ func TestLoadAll_MDWithNoFrontmatterSkipped(t *testing.T) {
 	os.WriteFile(filepath.Join(dir, "readme.md"), []byte("# README\nJust a doc.\n"), 0o644)
 	os.WriteFile(filepath.Join(dir, "item.md"), []byte("---\nid: TK-001\nstatus: todo\n---\n"), 0o644)
 
-	items, err := LoadAll(dir)
+	items, _, err := LoadAll(dir)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -801,7 +801,7 @@ func TestLoadAll_YatIgnoreSkipsFile(t *testing.T) {
 	os.WriteFile(filepath.Join(dir, "item.md"), []byte("---\nid: TK-001\nstatus: todo\n---\n"), 0o644)
 	os.WriteFile(filepath.Join(dir, "notes.md"), []byte("---\nid: NOTES-001\nstatus: todo\nyat: ignore\n---\nMeeting notes.\n"), 0o644)
 
-	items, err := LoadAll(dir)
+	items, _, err := LoadAll(dir)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

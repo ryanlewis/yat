@@ -1,6 +1,8 @@
 package cmd
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -35,6 +37,27 @@ func TestNewRunContext_DuplicateIDs(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "duplicate") {
 		t.Errorf("expected 'duplicate' in error, got: %v", err)
+	}
+}
+
+func TestNewRunContext_UnknownDependencySaysFilesWereSkipped(t *testing.T) {
+	dir := t.TempDir()
+	writeItemFile(t, dir, "a.md", "---\nid: TK-001\nstatus: todo\ndependencies: [TK-002]\n---\n")
+
+	_, err := NewRunContext(dir, false, defaultConfig())
+	if err == nil || err.Error() != `item TK-001 has unknown dependency "TK-002"` {
+		t.Fatalf("with nothing skipped, err = %v", err)
+	}
+
+	if err = os.Symlink("nowhere.md", filepath.Join(dir, "TK-002.md")); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = NewRunContext(dir, false, defaultConfig())
+
+	want := `item TK-001 has unknown dependency "TK-002" (1 file was skipped as unreadable; see warnings)`
+	if err == nil || err.Error() != want {
+		t.Errorf("err = %v, want %s", err, want)
 	}
 }
 

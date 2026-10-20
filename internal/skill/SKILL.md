@@ -95,8 +95,10 @@ yat blocked --json | jq -r '.[] | "\(.id) waits on \(.waiting_on | join(", "))"'
 - `items directory "spec" not found.` (followed by a hint to run `yat init`) — there is no items directory where yat looked. Run `yat init` to create a project (only if asked), or pass `--dir <path>` to point at an existing one.
 - `project is read-only (readonly: true in .yat.yaml)` — see Safety: do the work, skip the status update.
 - `cannot pick an id: no items of type "<type>" have a numbered id; pass --prefix (e.g. --prefix TK-) or --id` — `yat add` has nothing to number from. Pass `--prefix` or `--id`.
+- `cannot pick an id: skipped as unreadable and may hold the next <prefix> id: <paths>; make them readable or pass --id` — `yat add` skipped files or folders (see the warnings) that may hold the id it would pick. A skipped file whose name starts with an id of the prefix (`TK-009-fix-login.md`) counts as holding that id and does not block. Fix the paths or pass `--id`.
 - `item "<id>" already exists` / `refusing to overwrite <file>` — `yat add` would collide with an existing item or file. Choose another `--id`.
 - `timed out waiting for another yat add to finish in <dir>` — another `yat add` held the items directory's lock for over 10 seconds. Concurrent adds are safe and take distinct ids; retry.
+- `item <id> has unknown dependency "<dep>"` — no item has that id. When files were skipped, it ends `(N files were skipped as unreadable; see warnings)`: the item may be in one of them.
 - `dependency "<id>" not found` — a `--dep` names no item. Check it with `yat list --json`.
 - `item "<id>" not found` — check the ID with `yat list --json`. IDs are matched exactly.
 - `cannot start <id>: blocked by <ids>` — finish the listed items first, or ask which to do.

@@ -78,7 +78,7 @@ func (a *AddCmd) Run(rc *RunContext) error {
 	}
 	defer unlock()
 
-	if rc.Items, err = item.ReloadWithOptions(rc.Dir, rc.parseOpts); err != nil {
+	if rc.Items, rc.skipped, err = item.ReloadWithOptions(rc.Dir, rc.parseOpts); err != nil {
 		return err
 	}
 
@@ -233,12 +233,62 @@ func (a *AddCmd) resolveID(rc *RunContext) (string, error) {
 		}
 	}
 
-	id := nextID(rc.Items, prefix)
+	taken, err := skippedIDs(rc.skipped, prefix)
+	if err != nil {
+		return "", err
+	}
+
+	id := nextID(append(slices.Clip(rc.Items), taken...), prefix)
 	if hasID(rc.Items, id) {
 		return "", fmt.Errorf("item %q already exists; pass --id", id)
 	}
 
 	return id, nil
+}
+
+// skippedIDs returns an item for each skipped file whose name starts with an id
+// numbered from prefix, so nextID counts that number as taken. Any other skipped
+// file or folder may hold the next id, so it refuses to pick one.
+func skippedIDs(skipped []string, prefix string) ([]*item.Item, error) {
+	var (
+		taken   []*item.Item
+		unknown []string
+	)
+
+	for _, path := range skipped {
+		if id, ok := skippedID(path, prefix); ok {
+			taken = append(taken, &item.Item{ID: id})
+		} else {
+			unknown = append(unknown, path)
+		}
+	}
+
+	if len(unknown) > 0 {
+		return nil, fmt.Errorf("cannot pick an id: skipped as unreadable and may hold the next %s id: %s; "+
+			"make them readable or pass --id", prefix, strings.Join(unknown, ", "))
+	}
+
+	return taken, nil
+}
+
+// skippedID returns the id the name of the skipped file at path starts with
+// (TK-007 from TK-007-fix-login.md) when it is numbered from prefix.
+func skippedID(path, prefix string) (string, bool) {
+	if info, err := os.Lstat(path); err != nil || info.IsDir() {
+		return "", false
+	}
+
+	rest, ok := strings.CutPrefix(filepath.Base(path), prefix)
+	if !ok {
+		return "", false
+	}
+
+	digits := rest[:len(rest)-len(strings.TrimLeft(rest, "0123456789"))]
+	if digits == "" {
+		return "", false
+	}
+
+	return prefix + digits, true
 }
 
 // hasID reports whether an item in items has id.
