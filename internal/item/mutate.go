@@ -10,6 +10,7 @@ import (
 	"regexp"
 	"strings"
 	"syscall"
+	"unicode/utf8"
 
 	"gopkg.in/yaml.v3"
 )
@@ -69,14 +70,10 @@ func SetStatusWithOptions(path string, newStatus Status, opts MutateOptions) err
 
 	fm := data[fmStart:fmEnd]
 
-	fieldName, fieldRe, err := statusKey(fm, fieldName, opts.Alias, path)
+	updatedFM, fieldName, err := rewriteStatus(fm, fieldName, opts.Alias, newStatus, path)
 	if err != nil {
 		return err
 	}
-
-	updatedFM := fieldRe.ReplaceAllFunc(fm, func(m []byte) []byte {
-		return replaceStatusValue(m, fieldRe.FindSubmatchIndex(m)[3], newStatus)
-	})
 
 	// The rewrite works on lines, so check the YAML still reads back as intended
 	// rather than writing a file that no longer loads.
@@ -99,22 +96,145 @@ func SetStatusWithOptions(path string, newStatus Status, opts MutateOptions) err
 	return nil
 }
 
-// statusKey returns the key the status is stored under in fm, and the pattern
-// matching its line: fieldName when present, as parse reads it first, else alias.
-func statusKey(fm []byte, fieldName, alias, path string) (string, *regexp.Regexp, error) {
-	if re := statusFieldRe(fieldName); re.Match(fm) {
-		return fieldName, re, nil
+// rewriteStatus returns fm with the status set to newStatus, and the key the
+// status is stored under: fieldName when present, as parse reads it first, else
+// alias.
+func rewriteStatus(fm []byte, fieldName, alias string, newStatus Status, path string) (
+	updated []byte, key string, err error,
+) {
+	keys := []string{fieldName}
+	if alias != "" && alias != fieldName {
+		keys = append(keys, alias)
 	}
 
-	if alias == "" || alias == fieldName {
-		return "", nil, fmt.Errorf("no %s field found in frontmatter of %s", fieldName, path)
+	pairs := topLevelPairs(fm)
+
+	for _, key = range keys {
+		if re := statusFieldRe(key); re.Match(fm) {
+			return re.ReplaceAllFunc(fm, func(m []byte) []byte {
+				return replaceStatusValue(m, re.FindSubmatchIndex(m)[3], newStatus)
+			}), key, nil
+		}
+
+		// A key the line pattern misses, such as "st\x61tus" or "? status",
+		// still loads, so find its value through the parsed YAML.
+		for i := 0; i+1 < len(pairs); i += 2 {
+			if pairs[i].Value != key {
+				continue
+			}
+
+			if out, ok := replaceNodeValue(fm, pairs[i+1], newStatus); ok {
+				return out, key, nil
+			}
+
+			return nil, "", fmt.Errorf("cannot update %s in %s: status key form not supported for writing; "+
+				"use a plain %s: key", key, path, key)
+		}
 	}
 
-	if re := statusFieldRe(alias); re.Match(fm) {
-		return alias, re, nil
+	if len(keys) == 1 {
+		return nil, "", fmt.Errorf("no %s field found in frontmatter of %s", fieldName, path)
 	}
 
-	return "", nil, fmt.Errorf("no %s or %s field found in frontmatter of %s", fieldName, alias, path)
+	return nil, "", fmt.Errorf("no %s or %s field found in frontmatter of %s", fieldName, alias, path)
+}
+
+// topLevelPairs returns the keys and values of the mapping fm holds, in turn, or
+// nil when fm is not a YAML mapping.
+func topLevelPairs(fm []byte) []*yaml.Node {
+	var doc yaml.Node
+	if err := yaml.Unmarshal(fm, &doc); err != nil || len(doc.Content) == 0 || doc.Content[0].Kind != yaml.MappingNode {
+		return nil
+	}
+
+	return doc.Content[0].Content
+}
+
+// replaceNodeValue returns fm with the scalar value, found by its line and
+// column, replaced by newStatus, keeping everything around it. It reports false
+// unless value is a plain or quoted scalar on one line whose source text it
+// finds at that position.
+func replaceNodeValue(fm []byte, value *yaml.Node, newStatus Status) ([]byte, bool) {
+	if value.Kind != yaml.ScalarNode || value.Anchor != "" || value.Value == "" {
+		return nil, false
+	}
+
+	if value.Style != 0 && value.Style != yaml.DoubleQuotedStyle && value.Style != yaml.SingleQuotedStyle {
+		return nil, false // tagged, literal or folded
+	}
+
+	start, ok := nodeOffset(fm, value.Line, value.Column)
+	if !ok {
+		return nil, false
+	}
+
+	line := fm[start:]
+	if i := bytes.IndexAny(line, "\r\n"); i >= 0 {
+		line = line[:i]
+	}
+
+	end := plainEnd(line)
+	if value.Style != 0 {
+		end = quotedEnd(line)
+	}
+
+	// The text must read back as the whole value: a scalar that goes on past
+	// this line, or a position that does not point at it, does not.
+	var got yaml.Node
+	if err := yaml.Unmarshal(line[:end], &got); err != nil || len(got.Content) == 0 ||
+		got.Content[0].Kind != yaml.ScalarNode || got.Content[0].Value != value.Value {
+		return nil, false
+	}
+
+	out := append(bytes.Clone(fm[:start]), newStatus...)
+
+	return append(out, fm[start+end:]...), true
+}
+
+// nodeOffset returns the byte offset in src of a yaml.Node's 1-based line and
+// column, counting line breaks and characters as the YAML parser does.
+func nodeOffset(src []byte, line, column int) (int, bool) {
+	off := 0
+
+	for ; line > 1; line-- {
+		for {
+			if off >= len(src) {
+				return 0, false
+			}
+
+			if n := lineBreakLen(src[off:]); n > 0 {
+				off += n
+
+				break
+			}
+
+			_, size := utf8.DecodeRune(src[off:])
+			off += size
+		}
+	}
+
+	for ; column > 1; column-- {
+		if off >= len(src) || lineBreakLen(src[off:]) > 0 {
+			return 0, false
+		}
+
+		_, size := utf8.DecodeRune(src[off:])
+		off += size
+	}
+
+	return off, true
+}
+
+// lineBreakLen returns the length of the line break at the start of b, or 0.
+// Like the YAML parser, it takes CRLF, CR, LF, NEL, LS and PS as line breaks.
+func lineBreakLen(b []byte) int {
+	for _, br := range []string{"\r\n", "\r", "\n", "\u0085", " ", " "} {
+		if bytes.HasPrefix(b, []byte(br)) {
+			return len(br)
+		}
+	}
+
+	return 0
 }
 
 // statusFieldRe matches a fieldName key line through its end, plus an indented
