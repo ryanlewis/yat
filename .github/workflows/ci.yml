@@ -26,6 +26,26 @@ jobs:
       - uses: golangci/golangci-lint-action@9fae48acfc02a90574d7c304a1758ef9895495fa # v7.0.1
         with:
           version: v2.11.4
+          # The action's own `config verify` fetches the JSON schema with a
+          # hard-coded 2s timeout, which golangci-lint.run sometimes misses.
+          # The next step verifies against a copy fetched with retries instead.
+          verify: false
+
+      # Uses the binary the action installed in $HOME (not on PATH), so the
+      # version stays the one pinned above.
+      - name: Verify golangci-lint config
+        run: |
+          shopt -s nullglob
+          bins=("$HOME"/golangci-lint-*/golangci-lint)
+          if [ "${#bins[@]}" -ne 1 ]; then
+            echo "::error::expected one golangci-lint binary in \$HOME, found ${#bins[@]}"
+            exit 1
+          fi
+          minor=$("${bins[0]}" version --short | cut -d. -f1,2)
+          schema="$RUNNER_TEMP/golangci.jsonschema.json"
+          curl -fsSL --retry 5 --retry-all-errors --max-time 30 -o "$schema" \
+            "https://golangci-lint.run/jsonschema/golangci.v${minor}.jsonschema.json"
+          "${bins[0]}" config verify --schema "file://$schema"
 
   test:
     runs-on: ubuntu-latest
