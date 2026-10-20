@@ -3,8 +3,8 @@ package item
 import (
 	"bytes"
 	"fmt"
-	"io/fs"
 	"os"
+	"path/filepath"
 	"regexp"
 
 	"gopkg.in/yaml.v3"
@@ -17,8 +17,6 @@ type MutateOptions struct {
 	// ValidStatuses, when non-nil, replaces the built-in Status.Valid() check.
 	ValidStatuses StatusSet
 }
-
-const filePermissions fs.FileMode = 0o600
 
 // SetStatus updates the status field in the frontmatter of the given file.
 // It performs a targeted replacement of the status: line within the frontmatter only,
@@ -82,11 +80,84 @@ func SetStatusWithOptions(path string, newStatus Status, opts MutateOptions) err
 	buf.Write(updatedFM)
 	buf.Write(data[fmEnd:])
 
-	if err := os.WriteFile(path, buf.Bytes(), filePermissions); err != nil {
+	if err := writeFileAtomic(path, buf.Bytes()); err != nil {
 		return fmt.Errorf("writing %s: %w", path, err)
 	}
 
 	return nil
+}
+
+// writeFileAtomic replaces the file at path with data, so a crash or a full disk
+// leaves either the old or the new contents, never a truncated file. It writes a
+// temp file next to the file, syncs it, gives it the file's mode and renames it
+// over the file. A symlink is followed and its target replaced, so the link stays
+// a link. Hard links to the file are not kept: the path gets a new inode.
+func writeFileAtomic(path string, data []byte) error {
+	target, err := filepath.EvalSymlinks(path)
+	if err != nil {
+		return err
+	}
+
+	mode, err := writableMode(target)
+	if err != nil {
+		return err
+	}
+
+	// The name ends in .tmp, not .md, so LoadAll never picks it up.
+	tmp, err := os.CreateTemp(filepath.Dir(target), "."+filepath.Base(target)+".*.tmp")
+	if err != nil {
+		return err
+	}
+
+	if err := writeAndClose(tmp, data, mode); err != nil {
+		_ = tmp.Close()
+		_ = os.Remove(tmp.Name())
+
+		return err
+	}
+
+	if err := os.Rename(tmp.Name(), target); err != nil {
+		_ = os.Remove(tmp.Name())
+
+		return err
+	}
+
+	return nil
+}
+
+// writableMode returns the permission bits of the file at path, refusing a file
+// the user cannot write: renaming over it needs only a writable directory, but
+// writing it in place would fail.
+func writableMode(path string) (os.FileMode, error) {
+	f, err := os.OpenFile(path, os.O_WRONLY, 0)
+	if err != nil {
+		return 0, err
+	}
+	defer f.Close()
+
+	info, err := f.Stat()
+	if err != nil {
+		return 0, err
+	}
+
+	return info.Mode().Perm(), nil
+}
+
+// writeAndClose writes data to f, sets its mode, syncs it to disk and closes it.
+func writeAndClose(f *os.File, data []byte, mode os.FileMode) error {
+	if _, err := f.Write(data); err != nil {
+		return err
+	}
+
+	if err := f.Chmod(mode); err != nil {
+		return err
+	}
+
+	if err := f.Sync(); err != nil {
+		return err
+	}
+
+	return f.Close()
 }
 
 // replaceStatusValue rewrites one "field: value" match, keeping any trailing
