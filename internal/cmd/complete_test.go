@@ -3,6 +3,7 @@ package cmd
 import (
 	"encoding/json"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -181,5 +182,28 @@ func TestCompleteCmd_CustomStatuses_AlreadyDone(t *testing.T) {
 	err := cmd.Run(rc)
 	if err == nil {
 		t.Fatal("expected error for already-done item with custom status")
+	}
+}
+
+// Two contexts loaded before either completes the item: the second sees the
+// first's write under the lock and does not complete it again.
+func TestCompleteCmd_SeesItemCompletedSinceLoad(t *testing.T) {
+	dir := t.TempDir()
+	writeItemFile(t, dir, "a.md", "---\nid: A\nstatus: todo\n---\n")
+
+	first, _ := newAddContext(t, dir, defaultConfig(), false)
+	second, _ := newAddContext(t, dir, defaultConfig(), false)
+
+	if err := (&CompleteCmd{ID: "A"}).Run(first); err != nil {
+		t.Fatalf("first complete: %v", err)
+	}
+
+	err := (&CompleteCmd{ID: "A"}).Run(second)
+	if err == nil || !strings.Contains(err.Error(), "already done") {
+		t.Fatalf("err = %v, want already done", err)
+	}
+
+	if got := readFile(t, filepath.Join(dir, "a.md")); got != "---\nid: A\nstatus: done\n---\n" {
+		t.Errorf("file changed:\n%s", got)
 	}
 }

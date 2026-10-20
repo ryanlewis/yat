@@ -36,6 +36,14 @@ func (c *CompleteCmd) Run(rc *RunContext) error {
 		return fmt.Errorf("project is read-only (readonly: true in .yat.yaml)")
 	}
 
+	// Another yat command may have changed the item or its dependencies since
+	// rc was loaded. Hold the lock while reloading, checking and writing.
+	unlock, err := rc.lockAndReload()
+	if err != nil {
+		return err
+	}
+	defer unlock()
+
 	it, ok := rc.Graph.Item(c.ID)
 	if !ok {
 		return fmt.Errorf("item %q not found", c.ID)

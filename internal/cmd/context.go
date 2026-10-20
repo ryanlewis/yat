@@ -35,8 +35,10 @@ type RunContext struct {
 	// fieldAliases maps canonical field names to the keys item files use.
 	fieldAliases map[string]string
 
-	// parseOpts are the options items were loaded with.
+	// parseOpts and buildOpts are the options items were loaded and the graph
+	// built with.
 	parseOpts item.ParseOptions
+	buildOpts []graphpkg.BuildOption
 
 	// skipped lists the files and folders the load skipped as unreadable.
 	skipped []string
@@ -62,15 +64,6 @@ func NewRunContext(dir string, jsonOutput bool, cfg *config.Config) (*RunContext
 		DefaultStatus: defaultStatus,
 	}
 
-	items, skipped, err := item.LoadAllWithOptions(dir, parseOpts)
-	if err != nil {
-		return nil, err
-	}
-
-	if _, indexErr := item.Index(items); indexErr != nil {
-		return nil, indexErr
-	}
-
 	isDone := func(s item.Status) bool {
 		return cfg.Statuses.IsDone(string(s))
 	}
@@ -83,12 +76,8 @@ func NewRunContext(dir string, jsonOutput bool, cfg *config.Config) (*RunContext
 		buildOpts = append(buildOpts, graphpkg.WithPhaseOrder(cfg.Phases))
 	}
 
-	g, err := graphpkg.Build(items, buildOpts...)
+	items, skipped, g, err := loadItems(dir, parseOpts, buildOpts, item.LoadAllWithOptions)
 	if err != nil {
-		if errors.Is(err, graphpkg.ErrUnknownDependency) && len(skipped) > 0 {
-			return nil, fmt.Errorf("%w (%s skipped as unreadable; see warnings)", err, filesWere(len(skipped)))
-		}
-
 		return nil, err
 	}
 
@@ -113,6 +102,7 @@ func NewRunContext(dir string, jsonOutput bool, cfg *config.Config) (*RunContext
 		statusIsAlias: statusIsAlias,
 		fieldAliases:  cfg.FieldAliases,
 		parseOpts:     parseOpts,
+		buildOpts:     buildOpts,
 		skipped:       skipped,
 	}, nil
 }
@@ -124,6 +114,60 @@ func filesWere(n int) string {
 	}
 
 	return fmt.Sprintf("%d files were", n)
+}
+
+// loadItems loads the items in dir with load, checks no two share an id and
+// builds their graph. It also returns the files and folders the load skipped as
+// unreadable.
+func loadItems(dir string, parseOpts item.ParseOptions, buildOpts []graphpkg.BuildOption,
+	load func(string, item.ParseOptions) ([]*item.Item, []string, error),
+) ([]*item.Item, []string, *graphpkg.Graph, error) {
+	items, skipped, err := load(dir, parseOpts)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+
+	if _, err = item.Index(items); err != nil {
+		return nil, nil, nil, err
+	}
+
+	g, err := graphpkg.Build(items, buildOpts...)
+	if err != nil {
+		if errors.Is(err, graphpkg.ErrUnknownDependency) && len(skipped) > 0 {
+			err = fmt.Errorf("%w (%s skipped as unreadable; see warnings)", err, filesWere(len(skipped)))
+		}
+
+		return nil, nil, nil, err
+	}
+
+	return items, skipped, g, nil
+}
+
+// lockAndReload takes the items directory's lock and reloads the items and the
+// graph under it, so a command that checks items and then writes sees what
+// other yat commands wrote since rc was loaded, and none writes in between.
+// Call the returned function to release the lock. A context built in memory,
+// with no directory, is used as it is.
+func (rc *RunContext) lockAndReload() (func(), error) {
+	if rc.Dir == "" {
+		return func() {}, nil
+	}
+
+	unlock, err := item.LockDir(rc.Dir)
+	if err != nil {
+		return nil, err
+	}
+
+	items, skipped, g, err := loadItems(rc.Dir, rc.parseOpts, rc.buildOpts, item.ReloadWithOptions)
+	if err != nil {
+		unlock()
+
+		return nil, err
+	}
+
+	rc.Items, rc.skipped, rc.Graph = items, skipped, g
+
+	return unlock, nil
 }
 
 // mutateOptions returns the options that write the item's status under the key

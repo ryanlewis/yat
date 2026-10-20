@@ -38,7 +38,7 @@ func LockDir(dir string) (func(), error) {
 		if time.Now().After(deadline) {
 			_ = f.Close()
 
-			return nil, fmt.Errorf("timed out waiting for another yat add to finish in %s", dir)
+			return nil, fmt.Errorf("timed out waiting for another yat command to finish in %s", dir)
 		}
 
 		time.Sleep(lockPoll)

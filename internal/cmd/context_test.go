@@ -1,12 +1,14 @@
 package cmd
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/ryanlewis/yat/internal/config"
+	"github.com/ryanlewis/yat/internal/item"
 )
 
 func TestNewRunContext_Valid(t *testing.T) {
@@ -112,5 +114,64 @@ func TestNewRunContext_CustomStatuses(t *testing.T) {
 	}
 	if rc.StatusField != "state" {
 		t.Errorf("StatusField = %q, want state", rc.StatusField)
+	}
+}
+
+// Starts, completes and adds of the same items, all loaded before any runs, as
+// when several yat processes start at once. Each holds the items directory's
+// lock around its read, check and write, so a start never undoes a complete
+// and adds still take distinct ids.
+func TestLockAndReload_ConcurrentStartCompleteAdd(t *testing.T) {
+	dir := addTestDir(t)
+
+	const rounds = 4
+
+	cmds := make([]interface{ Run(*RunContext) error }, 0, 5*rounds)
+
+	for i := range rounds {
+		cmds = append(cmds,
+			&StartCmd{ID: "TK-002"},
+			&CompleteCmd{ID: "TK-002"},
+			&StartCmd{ID: "ST-01"},
+			&CompleteCmd{ID: "ST-01"},
+			&AddCmd{Title: fmt.Sprintf("Task %d", i), Type: "Task", stdin: strings.NewReader("")},
+		)
+	}
+
+	rcs := make([]*RunContext, len(cmds))
+	for i := range rcs {
+		rcs[i], _ = newAddContext(t, dir, defaultConfig(), false)
+	}
+
+	errs := make(chan error, len(cmds))
+
+	for i, c := range cmds {
+		go func() { errs <- c.Run(rcs[i]) }()
+	}
+
+	for range cmds {
+		if err := <-errs; err != nil && !strings.Contains(err.Error(), "already done") {
+			t.Errorf("Run: %v", err)
+		}
+	}
+
+	items, _, err := item.LoadAll(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	byID, err := item.Index(items)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(items) != 3+rounds {
+		t.Errorf("got %d items, want %d", len(items), 3+rounds)
+	}
+
+	for _, id := range []string{"TK-002", "ST-01"} {
+		if got := byID[id].Status; got != item.StatusDone {
+			t.Errorf("%s status = %s, want done (%s)", id, got, filepath.Base(byID[id].FilePath))
+		}
 	}
 }

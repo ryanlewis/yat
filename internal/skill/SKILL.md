@@ -98,7 +98,7 @@ yat blocked --json | jq -r '.[] | "\(.id) waits on \(.waiting_on | join(", "))"'
 - `cannot pick an id: skipped as unreadable and may hold the next <prefix> id: <paths>; make them readable or pass --id` — `yat add` skipped files or folders (see the warnings) that may hold the id it would pick. A skipped file whose name starts with an id of the prefix (`TK-009-fix-login.md`), no wider than the prefix's ids (4 digits when there are none), counts as holding that id and does not block. Fix the paths or pass `--id`.
 - `item "<id>" may already exist in <file>, which was skipped as unreadable; make it readable or pass another --id` — `yat add --id` names an id that a skipped file's name starts with (followed by `-` or `.`). Fix the file or choose another `--id`.
 - `item "<id>" already exists` / `refusing to overwrite <file>` — `yat add` would collide with an existing item or file. Choose another `--id`.
-- `timed out waiting for another yat add to finish in <dir>` — another `yat add` held the items directory's lock for over 10 seconds. Concurrent adds are safe and take distinct ids; retry.
+- `timed out waiting for another yat command to finish in <dir>` — another `yat add`, `yat start` or `yat complete` held the items directory's lock for over 10 seconds. Running these at the same time is safe (concurrent adds take distinct ids); retry.
 - `item <id> has unknown dependency "<dep>"` — no item has that id. When files were skipped, it ends `(N files were skipped as unreadable; see warnings)`: the item may be in one of them.
 - `dependency "<id>" not found` — a `--dep` names no item. Check it with `yat list --json`.
 - `item "<id>" not found` — check the ID with `yat list --json`. IDs are matched exactly.

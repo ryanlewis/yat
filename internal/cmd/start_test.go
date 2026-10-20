@@ -283,3 +283,46 @@ func TestStartCmd_StatusKeyHoldsOtherField(t *testing.T) {
 		t.Errorf("file changed:\n%s", data)
 	}
 }
+
+// A context loaded before another command completed the item must not start it
+// again: start reloads under the lock and sees it is done.
+func TestStartCmd_SeesItemCompletedSinceLoad(t *testing.T) {
+	dir := t.TempDir()
+	writeItemFile(t, dir, "a.md", "---\nid: A\nstatus: todo\n---\n")
+
+	stale, _ := newAddContext(t, dir, defaultConfig(), false)
+	other, _ := newAddContext(t, dir, defaultConfig(), false)
+
+	if err := (&CompleteCmd{ID: "A"}).Run(other); err != nil {
+		t.Fatalf("complete: %v", err)
+	}
+
+	err := (&StartCmd{ID: "A"}).Run(stale)
+	if err == nil || !strings.Contains(err.Error(), "already done") {
+		t.Fatalf("err = %v, want already done", err)
+	}
+
+	if got := readFile(t, filepath.Join(dir, "a.md")); got != "---\nid: A\nstatus: done\n---\n" {
+		t.Errorf("file changed:\n%s", got)
+	}
+}
+
+// A dependency reopened since the context was loaded blocks start.
+func TestStartCmd_SeesDependencyReopenedSinceLoad(t *testing.T) {
+	dir := t.TempDir()
+	writeItemFile(t, dir, "a.md", "---\nid: A\nstatus: done\n---\n")
+	writeItemFile(t, dir, "b.md", "---\nid: B\nstatus: todo\ndependencies: [A]\n---\n")
+
+	rc, _ := newAddContext(t, dir, defaultConfig(), false)
+
+	writeItemFile(t, dir, "a.md", "---\nid: A\nstatus: todo\n---\n")
+
+	err := (&StartCmd{ID: "B"}).Run(rc)
+	if err == nil || !strings.Contains(err.Error(), "blocked by A") {
+		t.Fatalf("err = %v, want blocked by A", err)
+	}
+
+	if got := readFile(t, filepath.Join(dir, "b.md")); !strings.Contains(got, "status: todo") {
+		t.Errorf("file changed:\n%s", got)
+	}
+}
