@@ -447,3 +447,21 @@ func TestParseWithOptions_AliasSwap(t *testing.T) {
 		}
 	}
 }
+
+// A key that is an alias is never read as its own name, even when the file also
+// has the own key of the field it is an alias for.
+func TestParseWithOptions_AliasKeyNeverReadAsItself(t *testing.T) {
+	aliases := map[string]string{"state": "status", "status": "priority"} // status: state, priority: status
+	data := []byte("---\nid: A\nstate: done\nstatus: High\npriority: Low\n---\n")
+
+	for range 50 {
+		it, err := ParseWithOptions(data, "a.md", ParseOptions{Aliases: aliases})
+		if err != nil {
+			t.Fatalf("ParseWithOptions: %v", err)
+		}
+
+		if it.Status != StatusDone || it.StatusKey != "state" || it.Priority != PriorityLow {
+			t.Fatalf("got status %q key %q priority %q", it.Status, it.StatusKey, it.Priority)
+		}
+	}
+}

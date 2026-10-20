@@ -227,7 +227,12 @@ func indentWidth(line []byte) int {
 
 // remapAliases rewrites aliased frontmatter keys to their canonical names, and
 // returns the key the file stores the status under ("" when it has none).
-func remapAliases(fm []byte, aliases map[string]string, path string) (remapped []byte, statusKey string, err error) {
+//
+// A key that is an alias always means the field it is an alias for, never a
+// field of its own name (status: state with priority: status reads a status key
+// as the priority). Every rename is decided from the file's own keys, so the
+// result does not depend on map order.
+func remapAliases(fm []byte, aliases map[string]string, path string) (remapped []byte, from string, err error) {
 	// Rename keys in the node tree rather than round-tripping through a map, so
 	// values keep their source text (007, 1.10) and key order and anchors survive.
 	var doc yaml.Node
@@ -243,70 +248,64 @@ func remapAliases(fm []byte, aliases map[string]string, path string) (remapped [
 		return fm, "", nil
 	}
 
+	isAlias := func(key string) bool { return aliases[key] != "" && aliases[key] != key }
+
 	mapping := doc.Content[0]
-	present := make(map[string]bool, len(mapping.Content)/2)
+	owned := make(map[string]bool, len(mapping.Content)/2) // fields the file has a key of their own for
+	targets := make(map[string]bool, len(aliases))         // fields some alias stands for
 
 	for i := 0; i+1 < len(mapping.Content); i += 2 {
-		present[mapping.Content[i].Value] = true
+		if key := mapping.Content[i].Value; !isAlias(key) {
+			owned[key] = true
+		}
 	}
 
-	if present[statusField] && !renamed(statusField, aliases, present) {
-		statusKey = statusField
+	for alias, canonical := range aliases {
+		if alias != canonical {
+			targets[canonical] = true
+		}
+	}
+
+	if owned[statusField] {
+		from = statusField
 	}
 
 	if len(aliases) == 0 {
-		return fm, statusKey, nil
+		return fm, from, nil
 	}
 
-	// Decide every rename from the file's own keys before changing any, so the
-	// result does not depend on map order.
-	var renames []*yaml.Node
+	content := make([]*yaml.Node, 0, len(mapping.Content))
 
 	for i := 0; i+1 < len(mapping.Content); i += 2 {
-		if key := mapping.Content[i]; renamed(key.Value, aliases, present) {
-			renames = append(renames, key)
+		key, value := mapping.Content[i], mapping.Content[i+1]
+
+		switch canonical := aliases[key.Value]; {
+		case !isAlias(key.Value):
+		case !owned[canonical]:
+			if canonical == statusField {
+				from = key.Value
+			}
+
+			key.Value = canonical
+		case targets[key.Value]:
+			// The field's own key wins. This alias key would read as the field
+			// it is named after, which another alias stands for, so drop it.
+			continue
+		default:
+			// The field's own key wins; the alias key stays an extra field.
 		}
+
+		content = append(content, key, value)
 	}
 
-	for _, key := range renames {
-		if aliases[key.Value] == statusField {
-			statusKey = key.Value
-		}
-
-		key.Value = aliases[key.Value]
-	}
+	mapping.Content = content
 
 	remapped, err = yaml.Marshal(&doc)
 	if err != nil {
 		return nil, "", fmt.Errorf("re-marshaling frontmatter in %s: %w", path, err)
 	}
 
-	return remapped, statusKey, nil
-}
-
-// renamed reports whether key is renamed to the field it is an alias for. Keys
-// are renamed all at once: a field the file already has a key for is free only
-// if that key is itself renamed (status: state, priority: status), otherwise the
-// file's own key wins and the alias key is left as it is.
-func renamed(key string, aliases map[string]string, present map[string]bool) bool {
-	start := key
-
-	// With each field aliased once, a walk ends or comes back to start within
-	// len(aliases) steps.
-	for range len(aliases) {
-		target, ok := aliases[key]
-		if !ok || target == key {
-			return false
-		}
-
-		if !present[target] || target == start {
-			return true // the target is free, or a cycle of keys swaps names
-		}
-
-		key = target
-	}
-
-	return false
+	return remapped, from, nil
 }
 
 // validateStatus checks and normalizes the status field on an item.
