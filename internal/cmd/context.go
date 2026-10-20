@@ -35,10 +35,8 @@ type RunContext struct {
 	// fieldAliases maps canonical field names to the keys item files use.
 	fieldAliases map[string]string
 
-	// parseOpts and buildOpts are the options items were loaded and the graph
-	// built with.
-	parseOpts item.ParseOptions
-	buildOpts []graphpkg.BuildOption
+	// unlock releases the items directory's lock, when rc holds it.
+	unlock func()
 
 	// skipped lists the files and folders the load skipped as unreadable.
 	skipped []string
@@ -49,6 +47,18 @@ const statusKey = "status"
 
 // NewRunContext loads items and builds the graph.
 func NewRunContext(dir string, jsonOutput bool, cfg *config.Config) (*RunContext, error) {
+	return newRunContext(dir, jsonOutput, cfg, false)
+}
+
+// NewLockedRunContext takes the items directory's lock, then loads items and
+// builds the graph under it, for a command that checks items and then writes:
+// it sees what other yat commands wrote, and none writes in between. The lock
+// is held until rc.Unlock is called.
+func NewLockedRunContext(dir string, jsonOutput bool, cfg *config.Config) (*RunContext, error) {
+	return newRunContext(dir, jsonOutput, cfg, true)
+}
+
+func newRunContext(dir string, jsonOutput bool, cfg *config.Config, lock bool) (*RunContext, error) {
 	// Invert field aliases: config stores canonical→alias, parse needs alias→canonical.
 	aliases := make(map[string]string, len(cfg.FieldAliases))
 	for canonical, alias := range cfg.FieldAliases {
@@ -76,8 +86,19 @@ func NewRunContext(dir string, jsonOutput bool, cfg *config.Config) (*RunContext
 		buildOpts = append(buildOpts, graphpkg.WithPhaseOrder(cfg.Phases))
 	}
 
-	items, skipped, g, err := loadItems(dir, parseOpts, buildOpts, item.LoadAllWithOptions)
+	unlock := func() {}
+
+	if lock {
+		var err error
+		if unlock, err = item.LockDir(dir); err != nil {
+			return nil, err
+		}
+	}
+
+	items, skipped, g, err := loadItems(dir, parseOpts, buildOpts)
 	if err != nil {
+		unlock()
+
 		return nil, err
 	}
 
@@ -101,8 +122,7 @@ func NewRunContext(dir string, jsonOutput bool, cfg *config.Config) (*RunContext
 
 		statusIsAlias: statusIsAlias,
 		fieldAliases:  cfg.FieldAliases,
-		parseOpts:     parseOpts,
-		buildOpts:     buildOpts,
+		unlock:        unlock,
 		skipped:       skipped,
 	}, nil
 }
@@ -116,13 +136,12 @@ func filesWere(n int) string {
 	return fmt.Sprintf("%d files were", n)
 }
 
-// loadItems loads the items in dir with load, checks no two share an id and
-// builds their graph. It also returns the files and folders the load skipped as
-// unreadable.
-func loadItems(dir string, parseOpts item.ParseOptions, buildOpts []graphpkg.BuildOption,
-	load func(string, item.ParseOptions) ([]*item.Item, []string, error),
+// loadItems loads the items in dir, checks no two share an id and builds their
+// graph. It also returns the files and folders the load skipped as unreadable.
+func loadItems(
+	dir string, parseOpts item.ParseOptions, buildOpts []graphpkg.BuildOption,
 ) ([]*item.Item, []string, *graphpkg.Graph, error) {
-	items, skipped, err := load(dir, parseOpts)
+	items, skipped, err := item.LoadAllWithOptions(dir, parseOpts)
 	if err != nil {
 		return nil, nil, nil, err
 	}
@@ -143,31 +162,15 @@ func loadItems(dir string, parseOpts item.ParseOptions, buildOpts []graphpkg.Bui
 	return items, skipped, g, nil
 }
 
-// lockAndReload takes the items directory's lock and reloads the items and the
-// graph under it, so a command that checks items and then writes sees what
-// other yat commands wrote since rc was loaded, and none writes in between.
-// Call the returned function to release the lock. A context built in memory,
-// with no directory, is used as it is.
-func (rc *RunContext) lockAndReload() (func(), error) {
-	if rc.Dir == "" {
-		return func() {}, nil
+// Unlock releases the items directory's lock if rc holds it, as a context from
+// NewLockedRunContext does. Commands that write call it before printing, so a
+// reader slow to drain stdout does not hold up other yat commands. Calling it
+// again does nothing.
+func (rc *RunContext) Unlock() {
+	if rc.unlock != nil {
+		rc.unlock()
+		rc.unlock = nil
 	}
-
-	unlock, err := item.LockDir(rc.Dir)
-	if err != nil {
-		return nil, err
-	}
-
-	items, skipped, g, err := loadItems(rc.Dir, rc.parseOpts, rc.buildOpts, item.ReloadWithOptions)
-	if err != nil {
-		unlock()
-
-		return nil, err
-	}
-
-	rc.Items, rc.skipped, rc.Graph = items, skipped, g
-
-	return unlock, nil
 }
 
 // mutateOptions returns the options that write the item's status under the key

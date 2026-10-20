@@ -2,10 +2,13 @@ package cmd
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/ryanlewis/yat/internal/config"
 	"github.com/ryanlewis/yat/internal/item"
@@ -117,16 +120,60 @@ func TestNewRunContext_CustomStatuses(t *testing.T) {
 	}
 }
 
-// Starts, completes and adds of the same items, all loaded before any runs, as
-// when several yat processes start at once. Each holds the items directory's
-// lock around its read, check and write, so a start never undoes a complete
+type runner interface{ Run(*RunContext) error }
+
+// runLocked runs c with a context from NewLockedRunContext, as yat does for a
+// command that writes, and releases the lock after.
+func runLocked(dir string, c runner) error {
+	rc, err := NewLockedRunContext(dir, false, defaultConfig())
+	if err != nil {
+		return err
+	}
+	defer rc.Unlock()
+
+	rc.Stdout = io.Discard
+
+	return c.Run(rc)
+}
+
+// runWhileLocked holds the items directory's lock while it starts c with a
+// locked context and calls change, then releases it and returns c's error. The
+// context waits for the lock before it loads, so c sees what change wrote.
+func runWhileLocked(t *testing.T, dir string, change func(), c runner) error {
+	t.Helper()
+
+	unlock, err := item.LockDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	errs := make(chan error, 1)
+
+	go func() { errs <- runLocked(dir, c) }()
+
+	select {
+	case err := <-errs:
+		unlock()
+		t.Fatalf("%T ran while another held the lock: %v", c, err)
+	case <-time.After(50 * time.Millisecond):
+	}
+
+	change()
+	unlock()
+
+	return <-errs
+}
+
+// Starts, completes and adds of the same items, all run at once, as when
+// several yat processes start together. Each loads under the items directory's
+// lock and holds it until it has written, so a start never undoes a complete
 // and adds still take distinct ids.
-func TestLockAndReload_ConcurrentStartCompleteAdd(t *testing.T) {
+func TestNewLockedRunContext_ConcurrentStartCompleteAdd(t *testing.T) {
 	dir := addTestDir(t)
 
 	const rounds = 4
 
-	cmds := make([]interface{ Run(*RunContext) error }, 0, 5*rounds)
+	cmds := make([]runner, 0, 5*rounds)
 
 	for i := range rounds {
 		cmds = append(cmds,
@@ -138,15 +185,10 @@ func TestLockAndReload_ConcurrentStartCompleteAdd(t *testing.T) {
 		)
 	}
 
-	rcs := make([]*RunContext, len(cmds))
-	for i := range rcs {
-		rcs[i], _ = newAddContext(t, dir, defaultConfig(), false)
-	}
-
 	errs := make(chan error, len(cmds))
 
-	for i, c := range cmds {
-		go func() { errs <- c.Run(rcs[i]) }()
+	for _, c := range cmds {
+		go func() { errs <- runLocked(dir, c) }()
 	}
 
 	for range cmds {
@@ -176,6 +218,37 @@ func TestLockAndReload_ConcurrentStartCompleteAdd(t *testing.T) {
 	}
 }
 
+// A file broken while another command holds the lock is skipped, with its
+// warning, by the one load a locked context makes.
+func TestNewLockedRunContext_LoadsFileBrokenWhileWaiting(t *testing.T) {
+	dir := addTestDir(t)
+	broken := filepath.Join(dir, "tasks", "TK-009.md")
+
+	var rc *RunContext
+
+	err := runWhileLocked(t, dir, func() {
+		if err := os.Symlink("nowhere.md", broken); err != nil {
+			t.Fatal(err)
+		}
+	}, runFunc(func(got *RunContext) error {
+		rc = got
+
+		return nil
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if want := []string{broken}; !slices.Equal(rc.skipped, want) {
+		t.Errorf("skipped = %q, want %q", rc.skipped, want)
+	}
+}
+
+// runFunc runs a function as a command.
+type runFunc func(*RunContext) error
+
+func (f runFunc) Run(rc *RunContext) error { return f(rc) }
+
 // lockingWriter takes the items directory's lock on every write, to show the
 // command writing to it no longer holds it.
 type lockingWriter struct {
@@ -198,17 +271,21 @@ func (w *lockingWriter) Write(p []byte) (int, error) {
 
 // add, start and complete release the lock before printing, so a reader slow
 // to drain stdout does not hold up other yat commands.
-func TestLockAndReload_ReleasedBeforeOutput(t *testing.T) {
+func TestNewLockedRunContext_ReleasedBeforeOutput(t *testing.T) {
 	for _, jsonMode := range []bool{false, true} {
 		dir := addTestDir(t)
 
-		for _, c := range []interface{ Run(*RunContext) error }{
+		for _, c := range []runner{
 			&AddCmd{Title: "New", Type: "Task", stdin: strings.NewReader("")},
 			&StartCmd{ID: "TK-002"},
 			&StartCmd{ID: "TK-002"}, // already in progress
 			&CompleteCmd{ID: "TK-002"},
 		} {
-			rc, _ := newAddContext(t, dir, defaultConfig(), jsonMode)
+			rc, err := NewLockedRunContext(dir, jsonMode, defaultConfig())
+			if err != nil {
+				t.Fatal(err)
+			}
+
 			w := &lockingWriter{dir: dir}
 			rc.Stdout = w
 

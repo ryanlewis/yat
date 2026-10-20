@@ -185,20 +185,18 @@ func TestCompleteCmd_CustomStatuses_AlreadyDone(t *testing.T) {
 	}
 }
 
-// Two contexts loaded before either completes the item: the second sees the
-// first's write under the lock and does not complete it again.
-func TestCompleteCmd_SeesItemCompletedSinceLoad(t *testing.T) {
+// A complete that waits for the lock while another completes the item sees
+// the first's write and does not complete it again.
+func TestCompleteCmd_SeesItemCompletedWhileWaiting(t *testing.T) {
 	dir := t.TempDir()
 	writeItemFile(t, dir, "a.md", "---\nid: A\nstatus: todo\n---\n")
 
-	first, _ := newAddContext(t, dir, defaultConfig(), false)
-	second, _ := newAddContext(t, dir, defaultConfig(), false)
-
-	if err := (&CompleteCmd{ID: "A"}).Run(first); err != nil {
-		t.Fatalf("first complete: %v", err)
-	}
-
-	err := (&CompleteCmd{ID: "A"}).Run(second)
+	err := runWhileLocked(t, dir, func() {
+		first, _ := newAddContext(t, dir, defaultConfig(), false)
+		if err := (&CompleteCmd{ID: "A"}).Run(first); err != nil {
+			t.Errorf("first complete: %v", err)
+		}
+	}, &CompleteCmd{ID: "A"})
 	if err == nil || !strings.Contains(err.Error(), "already done") {
 		t.Fatalf("err = %v, want already done", err)
 	}

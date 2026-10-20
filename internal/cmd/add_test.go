@@ -442,20 +442,14 @@ func TestAddCmd_TypeTakesExistingCasing(t *testing.T) {
 func TestAddCmd_ConcurrentAddsTakeDistinctIDs(t *testing.T) {
 	dir := addTestDir(t)
 
-	// Every context is loaded before any add runs, as when several yat add
-	// processes start at once.
+	// Every add runs at once, as when several yat add processes start together.
 	const n = 8
-
-	rcs := make([]*RunContext, n)
-	for i := range rcs {
-		rcs[i], _ = newAddContext(t, dir, defaultConfig(), false)
-	}
 
 	errs := make(chan error, n)
 
-	for i, rc := range rcs {
+	for i := range n {
 		go func() {
-			errs <- (&AddCmd{Title: fmt.Sprintf("Task %d", i), Type: "Task", stdin: strings.NewReader("")}).Run(rc)
+			errs <- runLocked(dir, &AddCmd{Title: fmt.Sprintf("Task %d", i), Type: "Task", stdin: strings.NewReader("")})
 		}()
 	}
 
