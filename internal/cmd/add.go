@@ -202,7 +202,12 @@ func (a *AddCmd) resolveID(rc *RunContext) (string, error) {
 		}
 	}
 
-	return nextID(rc.Items, prefix), nil
+	id := nextID(rc.Items, prefix)
+	if _, ok := rc.Graph.Item(id); ok {
+		return "", fmt.Errorf("item %q already exists; pass --id", id)
+	}
+
+	return id, nil
 }
 
 // checkIDText rejects an id or prefix that cannot be part of a file name.
@@ -240,12 +245,13 @@ func nextID(items []*item.Item, prefix string) string {
 	seen := false
 
 	for _, it := range items {
-		m := numberedID.FindStringSubmatch(it.ID)
-		if len(m) != 3 || m[1] != prefix {
+		// Not numberedID: a prefix may end in a digit (V2 numbers V2001).
+		digits, ok := strings.CutPrefix(it.ID, prefix)
+		if !ok || digits == "" || strings.Trim(digits, "0123456789") != "" {
 			continue
 		}
 
-		n, err := strconv.Atoi(m[2])
+		n, err := strconv.Atoi(digits)
 		if err != nil {
 			continue
 		}
@@ -255,7 +261,7 @@ func nextID(items []*item.Item, prefix string) string {
 		}
 
 		highest = max(highest, n)
-		width = max(width, len(m[2]))
+		width = max(width, len(digits))
 	}
 
 	return fmt.Sprintf("%s%0*d", prefix, width, highest+1)
