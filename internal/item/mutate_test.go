@@ -367,3 +367,26 @@ func TestSetStatusWithOptions_EscapedOrExplicitKey(t *testing.T) {
 		})
 	}
 }
+
+// An alias used as a key (*status) is not the status key, though its node holds
+// the name "status"; writing it would leave the status unchanged.
+func TestSetStatus_AliasNodeKeyIsNotTheStatusKey(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "a.md")
+	orig := "---\nid: A\nx: &status foo\n*status : todo\n---\n\nBody.\n"
+	if err := os.WriteFile(path, []byte(orig), 0o644); err != nil {
+		t.Fatalf("writing test file: %v", err)
+	}
+
+	if err := SetStatus(path, StatusDone); err == nil {
+		t.Error("SetStatus succeeded, want an error")
+	}
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("reading back: %v", err)
+	}
+
+	if string(data) != orig {
+		t.Errorf("file changed:\n%q", data)
+	}
+}

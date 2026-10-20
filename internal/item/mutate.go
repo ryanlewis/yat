@@ -119,7 +119,8 @@ func rewriteStatus(fm []byte, fieldName, alias string, newStatus Status, path st
 		// A key the line pattern misses, such as "st\x61tus" or "? status",
 		// still loads, so find its value through the parsed YAML.
 		for i := 0; i+1 < len(pairs); i += 2 {
-			if pairs[i].Value != key {
+			// An alias key (*status) holds its anchor's name, not the key's.
+			if pairs[i].Kind != yaml.ScalarNode || pairs[i].Value != key {
 				continue
 			}
 

@@ -105,4 +105,4 @@ yat blocked --json | jq -r '.[] | "\(.id) waits on \(.waiting_on | join(", "))"'
 - `cannot start <id>: blocked by <ids>` — finish the listed items first, or ask which to do.
 - `item <id> is already done` — nothing to do; move on with `yat next`.
 - `cannot update status in <file>: its value is not a one-line scalar; edit it by hand` — the status is written over several lines or uses a YAML anchor, so yat left the file untouched. Tell the user; do not rewrite the frontmatter yourself unless asked.
-- `cannot update status in <file>: status key form not supported for writing; use a plain status: key` — the key is written in a form such as `? status` or `"st\x61tus"` and its value carries an anchor or tag, or spans lines, so yat left the file untouched. Tell the user; do not rewrite the frontmatter yourself unless asked.
+- `cannot update status in <file>: status key form not supported for writing; use a plain status: key` — the key is written in a form such as `? status` or `"st\x61tus"` and its value is empty, spans lines, or carries an anchor or tag, so yat left the file untouched. Tell the user; do not rewrite the frontmatter yourself unless asked.
