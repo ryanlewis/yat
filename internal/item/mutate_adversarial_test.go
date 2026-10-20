@@ -305,6 +305,11 @@ func TestSetStatus_PreservesSurroundingBytes(t *testing.T) {
 			want:  "---\nid: TK-001\nstatus: in-progress # was draft\n---\n",
 		},
 		{
+			name:  "comment kept when value is on the next line",
+			input: "---\nid: TK-001\nstatus: # pick later\n  todo\n---\n",
+			want:  "---\nid: TK-001\nstatus: in-progress # pick later\n---\n",
+		},
+		{
 			name:  "status value on the next line",
 			input: "---\nid: TK-001\nstatus:\n  todo\ntitle: Alpha\n---\n",
 			want:  "---\nid: TK-001\nstatus: in-progress\ntitle: Alpha\n---\n",
@@ -374,6 +379,40 @@ func TestSetStatusWithOptions_MultiWordStatus(t *testing.T) {
 			it, err := ParseWithOptions(data, path, ParseOptions{ValidStatuses: opts.ValidStatuses})
 			if err != nil || it == nil || it.Status != "in flight" {
 				t.Errorf("rewritten file does not parse back to \"in flight\": item=%+v err=%v", it, err)
+			}
+		})
+	}
+}
+
+func TestSetStatus_RefusesRewriteThatWouldNotParseBack(t *testing.T) {
+	// Status values the line rewrite cannot replace cleanly must be left alone
+	// with an error, never written as a corrupted file.
+	tests := []struct {
+		name  string
+		input string
+	}{
+		{name: "multi-line plain", input: "---\nid: TK-001\nstatus: to\n  do\n---\n"},
+		{name: "folded block scalar", input: "---\nid: TK-001\nstatus: >\n  todo\n---\n"},
+		{name: "literal block scalar", input: "---\nid: TK-001\nstatus: |-\n  todo\n---\n"},
+		{name: "two continuation lines", input: "---\nid: TK-001\nstatus:\n  to\n  do\n---\n"},
+		{name: "anchored value", input: "---\nid: TK-001\nstatus: &s todo\nphase: *s\n---\n"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "test.md")
+			if err := os.WriteFile(path, []byte(tt.input), 0o644); err != nil {
+				t.Fatal(err)
+			}
+
+			if err := SetStatus(path, StatusInProgress); err == nil {
+				data, _ := os.ReadFile(path)
+				t.Fatalf("expected error, file now:\n%q", data)
+			}
+
+			data, _ := os.ReadFile(path)
+			if string(data) != tt.input {
+				t.Errorf("file changed:\n%q", data)
 			}
 		})
 	}

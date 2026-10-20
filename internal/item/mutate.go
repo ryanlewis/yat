@@ -6,6 +6,8 @@ import (
 	"io/fs"
 	"os"
 	"regexp"
+
+	"gopkg.in/yaml.v3"
 )
 
 // MutateOptions controls how SetStatusWithOptions behaves.
@@ -66,6 +68,13 @@ func SetStatusWithOptions(path string, newStatus Status, opts MutateOptions) err
 		return replaceStatusValue(m, fieldName, newStatus)
 	})
 
+	// The rewrite works on lines, so check the YAML still reads back as intended
+	// rather than writing a file that no longer loads.
+	if !fieldHolds(updatedFM, fieldName, newStatus) {
+		return fmt.Errorf("cannot update %s in %s: its value is not a one-line scalar; edit it by hand",
+			fieldName, path)
+	}
+
 	// Everything outside the frontmatter (BOM, delimiters, line endings, body) is
 	// written back byte-for-byte.
 	var buf bytes.Buffer
@@ -98,10 +107,41 @@ func replaceStatusValue(m []byte, fieldName string, newStatus Status) []byte {
 		return out
 	}
 
-	// The value is on the next line; fold it onto the key line.
+	// The value is on the next line; fold it onto the key line, keeping a
+	// comment from the key line.
+	if bytes.HasPrefix(tail, []byte(" #")) {
+		out = append(out, bytes.TrimRight(tail, "\r")...)
+	}
+
 	_, nextTail := splitScalar(next)
 
 	return append(out, nextTail...)
+}
+
+// fieldHolds reports whether fm parses as a YAML mapping whose fieldName key
+// holds exactly the scalar want.
+func fieldHolds(fm []byte, fieldName string, want Status) bool {
+	var doc yaml.Node
+	if err := yaml.Unmarshal(fm, &doc); err != nil || len(doc.Content) == 0 || doc.Content[0].Kind != yaml.MappingNode {
+		return false
+	}
+
+	found := false
+	pairs := doc.Content[0].Content
+
+	for i := 0; i+1 < len(pairs); i += 2 {
+		if pairs[i].Value != fieldName {
+			continue
+		}
+
+		if v := pairs[i+1]; v.Kind != yaml.ScalarNode || v.Value != string(want) {
+			return false
+		}
+
+		found = true
+	}
+
+	return found
 }
 
 // splitScalar splits the text after a YAML key's colon into the scalar value
