@@ -153,7 +153,9 @@ func (c *SkillUninstallCmd) Run(env *SkillEnv) error {
 		}
 	}
 
-	if err := skill.Uninstall(agent, dir); err != nil {
+	// Only the agent's own skills/yat directory is yat's to remove; a --path
+	// directory belongs to the user even when yat's files were all it held.
+	if err := skill.Uninstall(agent, dir, c.Path == ""); err != nil {
 		return err
 	}
 

@@ -195,7 +195,9 @@ func ForeignFiles(a Agent, dir string) []string {
 }
 
 // Install writes the agent's rendered files to dir, creating it if needed,
-// and overwrites any existing files.
+// and overwrites any existing files. It never writes through a symlink: a
+// link whose target yat wrote is replaced with a regular file, and any other
+// link is refused.
 func Install(a Agent, dir string) error {
 	if err := os.MkdirAll(dir, dirPerm); err != nil {
 		return err
@@ -205,6 +207,9 @@ func Install(a Agent, dir string) error {
 		if err := os.MkdirAll(filepath.Dir(path), dirPerm); err != nil {
 			return err
 		}
+		if err := unlinkOwnSymlink(dir, name); err != nil {
+			return err
+		}
 		if err := os.WriteFile(path, content, filePerm); err != nil {
 			return err
 		}
@@ -212,14 +217,35 @@ func Install(a Agent, dir string) error {
 	return nil
 }
 
+// unlinkOwnSymlink removes name under dir if it is a symlink to a file yat
+// wrote, so the next write makes a regular file instead of following the
+// link. A symlink to anything else, including a dangling one, is an error.
+func unlinkOwnSymlink(dir, name string) error {
+	path := filepath.Join(dir, name)
+	info, err := os.Lstat(path)
+	if err != nil || info.Mode()&os.ModeSymlink == 0 {
+		return nil
+	}
+	if _, owned := fileState(dir, name); !owned {
+		return fmt.Errorf("%s in %s is a symlink to a file yat did not write; refusing to write through it",
+			name, dir)
+	}
+	return os.Remove(path)
+}
+
 // Uninstall removes the agent's files that yat wrote from dir, leaving any
-// other file alone. If the directory is empty afterwards, it is also removed.
-func Uninstall(a Agent, dir string) error {
+// other file alone. When removeDir is set and dir is empty afterwards, dir is
+// removed too; callers set it only for a directory yat owns, never for a
+// directory the user named.
+func Uninstall(a Agent, dir string, removeDir bool) error {
 	for _, name := range InstalledFiles(a, dir) {
 		path := filepath.Join(dir, name)
 		if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
 			return err
 		}
+	}
+	if !removeDir {
+		return nil
 	}
 	entries, err := os.ReadDir(dir)
 	if err == nil && len(entries) == 0 {
