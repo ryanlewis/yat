@@ -23,6 +23,7 @@ type cli struct {
 	Ready    cmd.ReadyCmd    `cmd:"" help:"Show items ready to work on."`
 	Next     cmd.NextCmd     `cmd:"" help:"Show the highest-priority ready item."`
 	Show     cmd.ShowCmd     `cmd:"" help:"Show an item by ID."`
+	Add      cmd.AddCmd      `cmd:"" help:"Create a new item."`
 	Start    cmd.StartCmd    `cmd:"" help:"Start working on an item."`
 	Complete cmd.CompleteCmd `cmd:"" help:"Mark an item as done."`
 	Blocked  cmd.BlockedCmd  `cmd:"" help:"Show blocked items and their dependencies."`
