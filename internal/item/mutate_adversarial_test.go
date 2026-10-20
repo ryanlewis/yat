@@ -43,7 +43,18 @@ func TestSetStatus_NoFrontmatter(t *testing.T) {
 	}
 }
 
+// skipIfRoot skips tests that rely on file modes, which root ignores.
+func skipIfRoot(t *testing.T) {
+	t.Helper()
+
+	if os.Geteuid() == 0 {
+		t.Skip("file modes do not restrict root")
+	}
+}
+
 func TestSetStatus_ReadOnlyFile(t *testing.T) {
+	skipIfRoot(t)
+
 	dir := t.TempDir()
 	path := filepath.Join(dir, "readonly.md")
 	os.WriteFile(path, []byte(testTodoFrontmatter), 0o644)
@@ -490,21 +501,24 @@ func TestSetStatus_WritesThroughSymlink(t *testing.T) {
 	assertNoTempFiles(t, targetDir, "test.md")
 }
 
-func TestSetStatus_FailedWriteKeepsOriginal(t *testing.T) {
+func TestSetStatus_ReadOnlyDirWritesInPlace(t *testing.T) {
+	skipIfRoot(t)
+
 	dir := t.TempDir()
 	path := filepath.Join(dir, "test.md")
 	os.WriteFile(path, []byte(testTodoFrontmatter), 0o644)
-	// A read-only directory stops the temp file being created.
+	// A read-only directory stops the temp file being created, so the item is
+	// written in place instead.
 	os.Chmod(dir, 0o555)
 	t.Cleanup(func() { os.Chmod(dir, 0o755) })
 
-	if err := SetStatus(path, StatusDone); err == nil {
-		t.Fatal("expected error writing into a read-only directory")
+	if err := SetStatus(path, StatusDone); err != nil {
+		t.Fatalf("SetStatus: %v", err)
 	}
 
 	data, _ := os.ReadFile(path)
-	if string(data) != testTodoFrontmatter {
-		t.Errorf("original changed, got:\n%s", data)
+	if !strings.Contains(string(data), "status: done") {
+		t.Errorf("status not updated, got:\n%s", data)
 	}
 	assertNoTempFiles(t, dir, "test.md")
 }
