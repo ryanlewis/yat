@@ -417,3 +417,94 @@ func TestSetStatus_RefusesRewriteThatWouldNotParseBack(t *testing.T) {
 		})
 	}
 }
+
+// --- atomic write tests ---
+
+// assertNoTempFiles fails if anything other than want is left in dir.
+func assertNoTempFiles(t *testing.T, dir string, want ...string) {
+	t.Helper()
+
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	got := make([]string, 0, len(entries))
+	for _, e := range entries {
+		got = append(got, e.Name())
+	}
+
+	if strings.Join(got, ",") != strings.Join(want, ",") {
+		t.Errorf("dir entries = %v, want %v", got, want)
+	}
+}
+
+func TestSetStatus_KeepsFileMode(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "test.md")
+	os.WriteFile(path, []byte(testTodoFrontmatter), 0o644)
+	os.Chmod(path, 0o640)
+
+	if err := SetStatus(path, StatusDone); err != nil {
+		t.Fatalf("SetStatus: %v", err)
+	}
+
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode().Perm() != 0o640 {
+		t.Errorf("mode = %v, want 0640", info.Mode().Perm())
+	}
+	assertNoTempFiles(t, dir, "test.md")
+}
+
+func TestSetStatus_WritesThroughSymlink(t *testing.T) {
+	dir := t.TempDir()
+	targetDir := filepath.Join(dir, "real")
+	os.Mkdir(targetDir, 0o755)
+	target := filepath.Join(targetDir, "test.md")
+	os.WriteFile(target, []byte(testTodoFrontmatter), 0o644)
+	link := filepath.Join(dir, "link.md")
+	if err := os.Symlink(filepath.Join("real", "test.md"), link); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := SetStatus(link, StatusDone); err != nil {
+		t.Fatalf("SetStatus: %v", err)
+	}
+
+	info, err := os.Lstat(link)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode()&os.ModeSymlink == 0 {
+		t.Errorf("link.md is no longer a symlink: mode %v", info.Mode())
+	}
+
+	data, _ := os.ReadFile(target)
+	if !strings.Contains(string(data), "status: done") {
+		t.Errorf("target not updated, got:\n%s", data)
+	}
+	assertNoTempFiles(t, dir, "link.md", "real")
+	assertNoTempFiles(t, targetDir, "test.md")
+}
+
+func TestSetStatus_FailedWriteKeepsOriginal(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "test.md")
+	os.WriteFile(path, []byte(testTodoFrontmatter), 0o644)
+	// A read-only directory stops the temp file being created.
+	os.Chmod(dir, 0o555)
+	t.Cleanup(func() { os.Chmod(dir, 0o755) })
+
+	if err := SetStatus(path, StatusDone); err == nil {
+		t.Fatal("expected error writing into a read-only directory")
+	}
+
+	data, _ := os.ReadFile(path)
+	if string(data) != testTodoFrontmatter {
+		t.Errorf("original changed, got:\n%s", data)
+	}
+	assertNoTempFiles(t, dir, "test.md")
+}
