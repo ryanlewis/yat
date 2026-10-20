@@ -101,7 +101,7 @@ yat blocked --json | jq -r '.[] | "\(.id) waits on \(.waiting_on | join(", "))"'
 - `timed out waiting for another yat command to finish in <dir>` — another `yat add`, `yat start` or `yat complete` held the items directory's lock for over 10 seconds. Running these at the same time is safe (concurrent adds take distinct ids); retry.
 - `warning: could not lock <dir>: <reason>; continuing without a lock` (stderr) — the items directory's filesystem cannot lock (some network or FUSE mounts), or on Windows the folder cannot hold the lock file. The command still ran. Do not run `yat add`, `yat start` or `yat complete` in parallel there.
 - `item <id> has unknown dependency "<dep>"` — no item has that id. When files were skipped, it ends `(N files were skipped as unreadable; see warnings)`: the item may be in one of them.
-- `dependency "<id>" not found` — a `--dep` names no item. Check it with `yat list --json`.
+- `dependency "<id>" not found` — a `--dep` names no item. Check it with `yat list --json`. When files were skipped, it ends `(N files were skipped as unreadable; see warnings)`, or, when a skipped file's name starts with the id (followed by `-` or `.`), `; it may be in <file>, which was skipped as unreadable`: fix that file.
 - `item "<id>" not found` — check the ID with `yat list --json`. IDs are matched exactly.
 - `cannot start <id>: blocked by <ids>` — finish the listed items first, or ask which to do.
 - `item <id> is already done` — nothing to do; move on with `yat next`.

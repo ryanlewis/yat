@@ -198,6 +198,18 @@ func TestAddCmd_SkippedFiles(t *testing.T) {
 			wantID:  "TK-100",
 		},
 		{
+			name:    "--dep names a skipped file that may hold it",
+			skipped: []string{"TK-100-old.md", "notes.md"},
+			a:       AddCmd{Title: "New", Type: "Task", ID: "TK-200", Dep: []string{"TK-100"}},
+			wantErr: `dependency "TK-100" not found; it may be in <dir>/tasks/TK-100-old.md, which was skipped as unreadable`,
+		},
+		{
+			name:    "--dep not in any skipped file's name counts the skipped files",
+			skipped: []string{"TK-1000.md", "notes.md"},
+			a:       AddCmd{Title: "New", Type: "Task", ID: "TK-200", Dep: []string{"TK-100"}},
+			wantErr: `dependency "TK-100" not found (2 files were skipped as unreadable; see warnings)`,
+		},
+		{
 			name:    "--id still works",
 			skipped: []string{"notes.md"},
 			a:       AddCmd{Title: "New", Type: "Task", ID: "TK-100"},
@@ -475,5 +487,23 @@ func TestAddCmd_ConcurrentAddsTakeDistinctIDs(t *testing.T) {
 
 	if len(items) != 3+n {
 		t.Errorf("got %d items, want %d", len(items), 3+n)
+	}
+}
+
+// An add that waits for the lock while another command writes its dependency
+// checks --dep against the items it loads under the lock, so it finds it.
+func TestAddCmd_SeesDependencyAddedWhileWaiting(t *testing.T) {
+	dir := addTestDir(t)
+
+	err := runWhileLocked(t, dir, func() {
+		writeItemFile(t, dir, "tasks/TK-050-new.md", "---\nid: TK-050\ntitle: New\nstatus: todo\n---\n")
+	}, &AddCmd{Title: "After", Type: "Task", Dep: []string{"TK-050"}, stdin: strings.NewReader("")})
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+
+	got := readFile(t, filepath.Join(dir, "tasks", "TK-051-after.md"))
+	if !strings.Contains(got, "TK-050") {
+		t.Errorf("want a dependency on TK-050, got:\n%s", got)
 	}
 }
