@@ -36,39 +36,8 @@ func (c *CompleteCmd) Run(rc *RunContext) error {
 		return fmt.Errorf("project is read-only (readonly: true in .yat.yaml)")
 	}
 
-	// Another yat command may have changed the item or its dependencies since
-	// rc was loaded. Hold the lock while reloading, checking and writing.
-	unlock, err := rc.lockAndReload()
+	it, unblocked, stillBlocked, err := c.complete(rc)
 	if err != nil {
-		return err
-	}
-	defer unlock()
-
-	it, ok := rc.Graph.Item(c.ID)
-	if !ok {
-		return fmt.Errorf("item %q not found", c.ID)
-	}
-
-	if rc.Statuses.IsDone(string(it.Status)) {
-		return fmt.Errorf("item %s is already done", c.ID)
-	}
-
-	opts, err := rc.mutateOptions(it)
-	if err != nil {
-		return err
-	}
-
-	// Simulate completion in memory so UnblockedBy/StillBlocked see the new state
-	prevStatus := it.Status
-	it.Status = item.Status(rc.Statuses.DefaultDone())
-	unblocked := rc.Graph.UnblockedBy(c.ID)
-	stillBlocked := rc.Graph.StillBlocked(c.ID)
-
-	target := item.Status(rc.Statuses.DefaultDone())
-
-	if err := item.SetStatusWithOptions(it.FilePath, target, opts); err != nil {
-		it.Status = prevStatus
-
 		return err
 	}
 
@@ -115,4 +84,46 @@ func (c *CompleteCmd) Run(rc *RunContext) error {
 	}
 
 	return nil
+}
+
+// complete sets the item done and returns it with the items it unblocks and
+// those still blocked by other items. Another yat command may have changed the
+// item or its dependencies since rc was loaded, so it holds the lock while
+// reloading, checking and writing, and releases it before anything is printed.
+func (c *CompleteCmd) complete(rc *RunContext) (it *item.Item, unblocked, stillBlocked []*item.Item, err error) {
+	unlock, err := rc.lockAndReload()
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	defer unlock()
+
+	it, ok := rc.Graph.Item(c.ID)
+	if !ok {
+		return nil, nil, nil, fmt.Errorf("item %q not found", c.ID)
+	}
+
+	if rc.Statuses.IsDone(string(it.Status)) {
+		return nil, nil, nil, fmt.Errorf("item %s is already done", c.ID)
+	}
+
+	opts, err := rc.mutateOptions(it)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+
+	// Simulate completion in memory so UnblockedBy/StillBlocked see the new state
+	prevStatus := it.Status
+	it.Status = item.Status(rc.Statuses.DefaultDone())
+	unblocked = rc.Graph.UnblockedBy(c.ID)
+	stillBlocked = rc.Graph.StillBlocked(c.ID)
+
+	target := item.Status(rc.Statuses.DefaultDone())
+
+	if err := item.SetStatusWithOptions(it.FilePath, target, opts); err != nil {
+		it.Status = prevStatus
+
+		return nil, nil, nil, err
+	}
+
+	return it, unblocked, stillBlocked, nil
 }

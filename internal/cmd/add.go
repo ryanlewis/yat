@@ -73,9 +73,35 @@ func (a *AddCmd) Run(rc *RunContext) error {
 		return err
 	}
 
-	// Another yat add may have written an item since rc was loaded. Hold the
-	// lock while reloading, picking the id and writing, so two adds never pick
-	// the same id.
+	if err := a.write(rc, it); err != nil {
+		return err
+	}
+
+	if rc.JSON {
+		return rc.writeJSON(addJSON{
+			ID:           it.ID,
+			Path:         it.FilePath,
+			Title:        it.Title,
+			Type:         it.Type,
+			Priority:     string(it.Priority),
+			Points:       it.Points,
+			Dependencies: it.Dependencies,
+			Status:       string(it.Status),
+			Phase:        it.Phase,
+			Body:         it.Body,
+		})
+	}
+
+	rc.printf("Added %s at %s\n", it.ID, it.FilePath)
+
+	return nil
+}
+
+// write picks it an id and folder and writes its file. Another yat add may have
+// written an item since rc was loaded, so it holds the lock while reloading,
+// picking the id and writing, so two adds never pick the same id, and releases
+// it before anything is printed.
+func (a *AddCmd) write(rc *RunContext, it *item.Item) error {
 	unlock, err := rc.lockAndReload()
 	if err != nil {
 		return err
@@ -100,23 +126,6 @@ func (a *AddCmd) Run(rc *RunContext) error {
 
 		return fmt.Errorf("writing %s: %w", it.FilePath, err)
 	}
-
-	if rc.JSON {
-		return rc.writeJSON(addJSON{
-			ID:           it.ID,
-			Path:         it.FilePath,
-			Title:        it.Title,
-			Type:         it.Type,
-			Priority:     string(it.Priority),
-			Points:       it.Points,
-			Dependencies: it.Dependencies,
-			Status:       string(it.Status),
-			Phase:        it.Phase,
-			Body:         it.Body,
-		})
-	}
-
-	rc.printf("Added %s at %s\n", it.ID, it.FilePath)
 
 	return nil
 }

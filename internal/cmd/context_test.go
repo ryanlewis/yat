@@ -175,3 +175,50 @@ func TestLockAndReload_ConcurrentStartCompleteAdd(t *testing.T) {
 		}
 	}
 }
+
+// lockingWriter takes the items directory's lock on every write, to show the
+// command writing to it no longer holds it.
+type lockingWriter struct {
+	dir string
+	err error
+}
+
+func (w *lockingWriter) Write(p []byte) (int, error) {
+	unlock, err := item.LockDir(w.dir)
+	if err != nil {
+		w.err = err
+
+		return len(p), nil
+	}
+
+	unlock()
+
+	return len(p), nil
+}
+
+// add, start and complete release the lock before printing, so a reader slow
+// to drain stdout does not hold up other yat commands.
+func TestLockAndReload_ReleasedBeforeOutput(t *testing.T) {
+	for _, jsonMode := range []bool{false, true} {
+		dir := addTestDir(t)
+
+		for _, c := range []interface{ Run(*RunContext) error }{
+			&AddCmd{Title: "New", Type: "Task", stdin: strings.NewReader("")},
+			&StartCmd{ID: "TK-002"},
+			&StartCmd{ID: "TK-002"}, // already in progress
+			&CompleteCmd{ID: "TK-002"},
+		} {
+			rc, _ := newAddContext(t, dir, defaultConfig(), jsonMode)
+			w := &lockingWriter{dir: dir}
+			rc.Stdout = w
+
+			if err := c.Run(rc); err != nil {
+				t.Fatalf("%T: %v", c, err)
+			}
+
+			if w.err != nil {
+				t.Errorf("%T (json %v) printed while holding the lock: %v", c, jsonMode, w.err)
+			}
+		}
+	}
+}
