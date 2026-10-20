@@ -329,8 +329,18 @@ func TestSetStatusWithOptions_EscapedOrExplicitKey(t *testing.T) {
 		{name: "tagged value", field: "status", fm: "? status\n: !!str todo\n"},
 		{name: "multi-line value", field: "status", fm: "? status\n: in\n  progress\n"},
 		{name: "multi-line quoted value", field: "status", fm: "? status\n: \"to\n  do\"\n"},
+		{name: "escaped empty value", field: "status", fm: "id: A\n\"st\\x61tus\":\n", want: "id: A\n\"st\\x61tus\": done\n"},
+		{
+			name: "escaped empty value with comment", field: "status", fm: "\"st\\x61tus\":   # c\nid: A\n",
+			want: "\"st\\x61tus\": done # c\nid: A\n",
+		},
+		{name: "escaped quoted empty value", field: "status", fm: "\"st\\x61tus\": \"\"\n", want: "\"st\\x61tus\": done\n"},
+		{name: "explicit empty value", field: "status", fm: "? status\n:\nid: A\n", want: "? status\n: done\nid: A\n"},
+		{name: "explicit empty CRLF", field: "status", fm: "? status\r\n:  \r\nid: A\r\n", want: "? status\r\n: done\r\nid: A\r\n"},
 		{name: "empty value", field: "status", fm: "id: A\n? status\n"},
+		{name: "empty value in flow mapping", field: "status", fm: "{id: A, \"st\\x61tus\": }\n"},
 		{name: "flow mapping", field: "status", fm: "{id: A, status: todo}\n"},
+		{name: "alias node key", field: "status", fm: "id: A\nx: &s status\n*s : todo\n"},
 	}
 
 	for _, tt := range tests {

@@ -119,13 +119,15 @@ func rewriteStatus(fm []byte, fieldName, alias string, newStatus Status, path st
 		// A key the line pattern misses, such as "st\x61tus" or "? status",
 		// still loads, so find its value through the parsed YAML.
 		for i := 0; i+1 < len(pairs); i += 2 {
-			// An alias key (*status) holds its anchor's name, not the key's.
-			if pairs[i].Kind != yaml.ScalarNode || pairs[i].Value != key {
+			if keyName(pairs[i]) != key {
 				continue
 			}
 
-			if out, ok := replaceNodeValue(fm, pairs[i+1], newStatus); ok {
-				return out, key, nil
+			// An alias key (*s) is refused: its text is not the key it reads as.
+			if pairs[i].Kind == yaml.ScalarNode {
+				if out, ok := replaceNodeValue(fm, pairs[i+1], newStatus); ok {
+					return out, key, nil
+				}
 			}
 
 			return nil, "", fmt.Errorf("cannot update %s in %s: status key form not supported for writing; "+
@@ -154,9 +156,9 @@ func topLevelPairs(fm []byte) []*yaml.Node {
 // replaceNodeValue returns fm with the scalar value, found by its line and
 // column, replaced by newStatus, keeping everything around it. It reports false
 // unless value is a plain or quoted scalar on one line whose source text it
-// finds at that position.
+// finds at that position, or an empty value right after its key's colon.
 func replaceNodeValue(fm []byte, value *yaml.Node, newStatus Status) ([]byte, bool) {
-	if value.Kind != yaml.ScalarNode || value.Anchor != "" || value.Value == "" {
+	if value.Kind != yaml.ScalarNode || value.Anchor != "" {
 		return nil, false
 	}
 
@@ -172,6 +174,10 @@ func replaceNodeValue(fm []byte, value *yaml.Node, newStatus Status) ([]byte, bo
 	line := fm[start:]
 	if i := bytes.IndexAny(line, "\r\n"); i >= 0 {
 		line = line[:i]
+	}
+
+	if value.Value == "" && value.Style == 0 {
+		return fillEmptyValue(fm, start, line, newStatus)
 	}
 
 	end := plainEnd(line)
@@ -190,6 +196,27 @@ func replaceNodeValue(fm []byte, value *yaml.Node, newStatus Status) ([]byte, bo
 	out := append(bytes.Clone(fm[:start]), newStatus...)
 
 	return append(out, fm[start+end:]...), true
+}
+
+// fillEmptyValue returns fm with newStatus written after the colon that ends at
+// start, as replaceStatusValue writes a plain "status:" key with no value. line
+// is the rest of that line, which must hold only spaces or a comment. It
+// reports false when start does not follow a colon (a "? status" key with no
+// ": " line, or a flow mapping).
+func fillEmptyValue(fm []byte, start int, line []byte, newStatus Status) ([]byte, bool) {
+	if start == 0 || fm[start-1] != ':' {
+		return nil, false
+	}
+
+	hasValue, tail := splitScalar(line)
+	if hasValue {
+		return nil, false
+	}
+
+	out := append(bytes.Clone(fm[:start]), " "+string(newStatus)...)
+	out = append(out, tail...)
+
+	return append(out, fm[start+len(line):]...), true
 }
 
 // nodeOffset returns the byte offset in src of a yaml.Node's 1-based line and
