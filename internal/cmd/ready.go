@@ -55,16 +55,16 @@ func (r *ReadyCmd) Run(rc *RunContext) error {
 
 	var maxID, maxPri, maxType int
 	for _, it := range items {
-		maxID = max(maxID, len(it.ID))
+		maxID = max(maxID, displayWidth(it.ID))
 		maxPri = max(maxPri, len(string(it.Priority)))
-		maxType = max(maxType, len(it.Type))
+		maxType = max(maxType, displayWidth(it.Type))
 	}
 
 	for _, it := range items {
-		fmt.Fprintf(rc.Stdout, "  %-*s  %s  %-*s  %s\n",
-			maxID, it.ID,
+		fmt.Fprintf(rc.Stdout, "  %s  %s  %s  %s\n",
+			padWidth(it.ID, maxID),
 			padRight(s.Priority(it.Priority), len(string(it.Priority)), maxPri),
-			maxType, it.Type,
+			padWidth(it.Type, maxType),
 			it.Title)
 	}
 

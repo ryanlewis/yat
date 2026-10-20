@@ -69,7 +69,7 @@ func (g *GraphCmd) renderText(rc *RunContext, layers [][]string) error {
 			sort.Strings(deps)
 
 			if len(deps) > 0 {
-				fmt.Fprintf(rc.Stdout, "  %s %-*s  → %s\n", emoji, maxIDLen, id, strings.Join(deps, ", "))
+				fmt.Fprintf(rc.Stdout, "  %s %s  → %s\n", emoji, padWidth(id, maxIDLen), strings.Join(deps, ", "))
 			} else {
 				fmt.Fprintf(rc.Stdout, "  %s %s\n", emoji, id)
 			}
@@ -83,9 +83,7 @@ func graphMaxIDLen(layers [][]string) int {
 	maxLen := 0
 	for _, layer := range layers {
 		for _, id := range layer {
-			if len(id) > maxLen {
-				maxLen = len(id)
-			}
+			maxLen = max(maxLen, displayWidth(id))
 		}
 	}
 

@@ -183,19 +183,19 @@ func (d *DashboardCmd) writeItems(rc *RunContext, items []readyJSON) {
 
 	var maxID, maxTitle int
 	for _, it := range items {
-		maxID = max(maxID, len(it.ID))
-		maxTitle = max(maxTitle, len(it.Title))
+		maxID = max(maxID, displayWidth(it.ID))
+		maxTitle = max(maxTitle, displayWidth(it.Title))
 	}
 
 	for _, it := range items {
 		if it.Priority == "" {
-			fmt.Fprintf(rc.Stdout, "  %-*s  %s\n", maxID, it.ID, it.Title)
+			fmt.Fprintf(rc.Stdout, "  %s  %s\n", padWidth(it.ID, maxID), it.Title)
 
 			continue
 		}
 
-		fmt.Fprintf(rc.Stdout, "  %-*s  %-*s  [%s]\n",
-			maxID, it.ID, maxTitle, it.Title, s.Priority(item.Priority(it.Priority)))
+		fmt.Fprintf(rc.Stdout, "  %s  %s  [%s]\n",
+			padWidth(it.ID, maxID), padWidth(it.Title, maxTitle), s.Priority(item.Priority(it.Priority)))
 	}
 }
 
