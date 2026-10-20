@@ -170,8 +170,8 @@ func TestSkillUninstall_PromptListsFiles(t *testing.T) {
 	if !strings.Contains(stdout.String(), "Removed claude skill") {
 		t.Errorf("unexpected output: %s", stdout)
 	}
-	if _, err := os.Stat(dir); !os.IsNotExist(err) {
-		t.Errorf("empty dir should be removed, stat err = %v", err)
+	if _, err := os.Stat(dir); err != nil {
+		t.Errorf("--path dir should be kept, stat err = %v", err)
 	}
 }
 
@@ -194,6 +194,45 @@ func TestSkillUninstall_KeepsUnrelatedFiles(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(dir, "notes.md")); err != nil {
 		t.Errorf("unrelated file removed: %v", err)
+	}
+}
+
+// TestSkillUninstall_KeepsPathDir is the repro: a --path dir holding only
+// yat's SKILL.md must survive uninstall.
+func TestSkillUninstall_KeepsPathDir(t *testing.T) {
+	dir := t.TempDir()
+	os.WriteFile(filepath.Join(dir, "SKILL.md"), []byte(oldSkill), 0o600)
+	env, _, _ := newSkillEnv(false, false, "")
+
+	if err := (&SkillUninstallCmd{Agent: testAgentClaude, Path: dir, Yes: true}).Run(env); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "SKILL.md")); !os.IsNotExist(err) {
+		t.Errorf("SKILL.md not removed: %v", err)
+	}
+	if _, err := os.Stat(dir); err != nil {
+		t.Errorf("--path dir removed: %v", err)
+	}
+}
+
+// TestSkillUninstall_RemovesEmptyDefaultDir checks that the agent's own
+// skills/yat dir still goes when uninstall empties it.
+func TestSkillUninstall_RemovesEmptyDefaultDir(t *testing.T) {
+	base := t.TempDir()
+	t.Setenv("CLAUDE_CONFIG_DIR", base)
+	env, _, _ := newSkillEnv(false, false, "")
+
+	if err := (&SkillInstallCmd{Agent: testAgentClaude}).Run(env); err != nil {
+		t.Fatalf("install: %v", err)
+	}
+	if err := (&SkillUninstallCmd{Agent: testAgentClaude, Yes: true}).Run(env); err != nil {
+		t.Fatalf("uninstall: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(base, "skills", "yat")); !os.IsNotExist(err) {
+		t.Errorf("default skill dir not removed: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(base, "skills")); err != nil {
+		t.Errorf("parent skills dir removed: %v", err)
 	}
 }
 

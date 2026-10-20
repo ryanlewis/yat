@@ -282,7 +282,7 @@ func TestInstallExistsUninstall(t *testing.T) {
 				t.Fatalf("re-Install: %v", err)
 			}
 
-			if err := Uninstall(a, dir); err != nil {
+			if err := Uninstall(a, dir, true); err != nil {
 				t.Fatalf("Uninstall: %v", err)
 			}
 			if Exists(a, dir) {
@@ -308,7 +308,7 @@ func TestUninstallLeavesUnrelatedFiles(t *testing.T) {
 			if err := os.WriteFile(extra, []byte("keep me"), 0o644); err != nil {
 				t.Fatal(err)
 			}
-			if err := Uninstall(a, dir); err != nil {
+			if err := Uninstall(a, dir, true); err != nil {
 				t.Fatalf("Uninstall: %v", err)
 			}
 			if _, err := os.Stat(extra); err != nil {
@@ -347,11 +347,88 @@ func TestForeignSkillFileLeftAlone(t *testing.T) {
 	if got := ForeignFiles(a, dir); len(got) != 1 || got[0] != skillFileName {
 		t.Errorf("ForeignFiles = %v, want [SKILL.md]", got)
 	}
-	if err := Uninstall(a, dir); err != nil {
+	if err := Uninstall(a, dir, true); err != nil {
 		t.Fatalf("Uninstall: %v", err)
 	}
 	data, err := os.ReadFile(path)
 	if err != nil || string(data) != foreign {
 		t.Errorf("foreign SKILL.md changed or removed: %q, %v", data, err)
+	}
+}
+
+// TestUninstallKeepsDirUnlessAsked guards a --path directory: removing yat's
+// files must not remove the directory, even when nothing else is in it.
+func TestUninstallKeepsDirUnlessAsked(t *testing.T) {
+	a, _ := Lookup(claudeName)
+	dir := t.TempDir()
+	if err := Install(a, dir); err != nil {
+		t.Fatalf("Install: %v", err)
+	}
+	if err := Uninstall(a, dir, false); err != nil {
+		t.Fatalf("Uninstall: %v", err)
+	}
+	if Exists(a, dir) {
+		t.Error("after Uninstall, Exists should be false")
+	}
+	if _, err := os.Stat(dir); err != nil {
+		t.Errorf("dir removed: %v", err)
+	}
+}
+
+func TestInstallReplacesSymlinkToOwnFile(t *testing.T) {
+	a, _ := Lookup(claudeName)
+	dir, other := t.TempDir(), t.TempDir()
+	target := filepath.Join(other, skillFileName)
+	if err := os.WriteFile(target, []byte("---\nname: yat\n---\nold body\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(dir, skillFileName)
+	if err := os.Symlink(target, path); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := Install(a, dir); err != nil {
+		t.Fatalf("Install: %v", err)
+	}
+	info, err := os.Lstat(path)
+	if err != nil || !info.Mode().IsRegular() {
+		t.Fatalf("SKILL.md is not a regular file: %v, %v", info, err)
+	}
+	if data, _ := os.ReadFile(target); string(data) != "---\nname: yat\n---\nold body\n" {
+		t.Errorf("link target was written through: %q", data)
+	}
+}
+
+func TestInstallRefusesOtherSymlinks(t *testing.T) {
+	cases := map[string]string{
+		"foreign target": "---\nname: other\n---\nnot yat\n",
+		"dangling":       "",
+	}
+	for label, content := range cases {
+		t.Run(label, func(t *testing.T) {
+			a, _ := Lookup(claudeName)
+			dir, other := t.TempDir(), t.TempDir()
+			target := filepath.Join(other, "target.md")
+			if content != "" {
+				if err := os.WriteFile(target, []byte(content), 0o600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if err := os.Symlink(target, filepath.Join(dir, skillFileName)); err != nil {
+				t.Fatal(err)
+			}
+
+			err := Install(a, dir)
+			if err == nil || !strings.Contains(err.Error(), "symlink") {
+				t.Fatalf("Install err = %v, want a symlink refusal", err)
+			}
+			data, readErr := os.ReadFile(target)
+			if content == "" && !os.IsNotExist(readErr) {
+				t.Errorf("dangling target created: %q", data)
+			}
+			if content != "" && string(data) != content {
+				t.Errorf("link target changed: %q", data)
+			}
+		})
 	}
 }
