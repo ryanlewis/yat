@@ -17,6 +17,10 @@ import (
 type MutateOptions struct {
 	// FieldName is the frontmatter key to rewrite (defaults to "status").
 	FieldName string
+	// Alias is another key the status may be stored under (from field_aliases).
+	// The file's own key is rewritten: FieldName when present, as parse reads it
+	// first, else Alias.
+	Alias string
 	// ValidStatuses, when non-nil, replaces the built-in Status.Valid() check.
 	ValidStatuses StatusSet
 }
@@ -64,12 +68,9 @@ func SetStatusWithOptions(path string, newStatus Status, opts MutateOptions) err
 
 	fm := data[fmStart:fmEnd]
 
-	// Match the key line through its end, plus an indented value on the next
-	// line (YAML allows "status:\n  todo"). replaceStatusValue decides what to keep.
-	fieldRe := regexp.MustCompile(`(?m)^` + regexp.QuoteMeta(fieldName) + `:[^\r\n]*(?:\r?\n[ \t]+[^\s#][^\r\n]*)?`)
-
-	if !fieldRe.Match(fm) {
-		return fmt.Errorf("no %s field found in frontmatter of %s", fieldName, path)
+	fieldName, fieldRe, err := statusKey(fm, fieldName, opts.Alias, path)
+	if err != nil {
+		return err
 	}
 
 	updatedFM := fieldRe.ReplaceAllFunc(fm, func(m []byte) []byte {
@@ -95,6 +96,31 @@ func SetStatusWithOptions(path string, newStatus Status, opts MutateOptions) err
 	}
 
 	return nil
+}
+
+// statusKey returns the key the status is stored under in fm, and the pattern
+// matching its line: fieldName when present, as parse reads it first, else alias.
+func statusKey(fm []byte, fieldName, alias, path string) (string, *regexp.Regexp, error) {
+	if re := statusFieldRe(fieldName); re.Match(fm) {
+		return fieldName, re, nil
+	}
+
+	if alias == "" || alias == fieldName {
+		return "", nil, fmt.Errorf("no %s field found in frontmatter of %s", fieldName, path)
+	}
+
+	if re := statusFieldRe(alias); re.Match(fm) {
+		return alias, re, nil
+	}
+
+	return "", nil, fmt.Errorf("no %s or %s field found in frontmatter of %s", fieldName, alias, path)
+}
+
+// statusFieldRe matches a fieldName key line through its end, plus an indented
+// value on the next line (YAML allows "status:\n  todo"). replaceStatusValue
+// decides what to keep.
+func statusFieldRe(fieldName string) *regexp.Regexp {
+	return regexp.MustCompile(`(?m)^` + regexp.QuoteMeta(fieldName) + `:[^\r\n]*(?:\r?\n[ \t]+[^\s#][^\r\n]*)?`)
 }
 
 // writeFileAtomic replaces the file at path with data, so a crash or a full disk
