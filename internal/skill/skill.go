@@ -226,7 +226,11 @@ func unlinkOwnSymlink(dir, name string) error {
 	if err != nil || info.Mode()&os.ModeSymlink == 0 {
 		return nil
 	}
-	if _, owned := fileState(dir, name); !owned {
+	present, owned := fileState(dir, name)
+	if !present {
+		return fmt.Errorf("%s in %s is a dangling symlink; refusing to write through it", name, dir)
+	}
+	if !owned {
 		return fmt.Errorf("%s in %s is a symlink to a file yat did not write; refusing to write through it",
 			name, dir)
 	}
