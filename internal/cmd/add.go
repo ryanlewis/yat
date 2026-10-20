@@ -65,11 +65,24 @@ func (a *AddCmd) Run(rc *RunContext) error {
 		return err
 	}
 
-	if it.ID, err = a.resolveID(rc); err != nil {
+	if it.Body, err = a.body(); err != nil {
 		return err
 	}
 
-	if it.Body, err = a.body(); err != nil {
+	// Another yat add may have written an item since rc was loaded. Hold the
+	// lock while reloading, picking the id and writing, so two adds never pick
+	// the same id.
+	unlock, err := item.LockDir(rc.Dir)
+	if err != nil {
+		return err
+	}
+	defer unlock()
+
+	if rc.Items, err = item.LoadAllWithOptions(rc.Dir, rc.parseOpts); err != nil {
+		return err
+	}
+
+	if it.ID, err = a.resolveID(rc); err != nil {
 		return err
 	}
 
@@ -195,7 +208,7 @@ func (a *AddCmd) resolveID(rc *RunContext) (string, error) {
 			return "", err
 		}
 
-		if _, ok := rc.Graph.Item(a.ID); ok {
+		if hasID(rc.Items, a.ID) {
 			return "", fmt.Errorf("item %q already exists", a.ID)
 		}
 
@@ -221,11 +234,16 @@ func (a *AddCmd) resolveID(rc *RunContext) (string, error) {
 	}
 
 	id := nextID(rc.Items, prefix)
-	if _, ok := rc.Graph.Item(id); ok {
+	if hasID(rc.Items, id) {
 		return "", fmt.Errorf("item %q already exists; pass --id", id)
 	}
 
 	return id, nil
+}
+
+// hasID reports whether an item in items has id.
+func hasID(items []*item.Item, id string) bool {
+	return slices.ContainsFunc(items, func(it *item.Item) bool { return it.ID == id })
 }
 
 // checkIDText rejects an id or prefix that cannot be part of a file name.

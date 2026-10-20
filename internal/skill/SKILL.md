@@ -95,6 +95,7 @@ yat blocked --json | jq -r '.[] | "\(.id) waits on \(.waiting_on | join(", "))"'
 - `project is read-only (readonly: true in .yat.yaml)` — see Safety: do the work, skip the status update.
 - `cannot pick an id: no items of type "<type>" have a numbered id; pass --prefix (e.g. --prefix TK-) or --id` — `yat add` has nothing to number from. Pass `--prefix` or `--id`.
 - `item "<id>" already exists` / `refusing to overwrite <file>` — `yat add` would collide with an existing item or file. Choose another `--id`.
+- `timed out waiting for <dir>/.yat.lock; if no other yat add is running, remove it` — another `yat add` held the items directory's lock for over 10 seconds. Concurrent adds are safe and take distinct ids; retry, and remove the file only if no `yat add` is running.
 - `dependency "<id>" not found` — a `--dep` names no item. Check it with `yat list --json`.
 - `item "<id>" not found` — check the ID with `yat list --json`. IDs are matched exactly.
 - `cannot start <id>: blocked by <ids>` — finish the listed items first, or ask which to do.
