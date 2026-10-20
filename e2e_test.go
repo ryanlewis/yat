@@ -142,15 +142,67 @@ func TestE2E_Help(t *testing.T) {
 	}
 }
 
-func TestE2E_NoArgs(t *testing.T) {
+func TestE2E_NoArgs_NoProject(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
-	_, stderr, code := run(t, dir)
+	stdout, stderr, code := run(t, dir)
 	if code != 0 {
 		t.Errorf("expected exit 0 for no subcommand, got %d", code)
 	}
-	if !strings.Contains(stderr, "yat --help") {
-		t.Error("expected hint to run --help")
+	if !strings.Contains(stdout, "yat init") {
+		t.Errorf("expected hint to run yat init on stdout, got:\n%s", stdout)
+	}
+	if stderr != "" {
+		t.Errorf("expected empty stderr, got: %s", stderr)
+	}
+}
+
+func TestE2E_NoArgs_NoProject_JSON(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	stdout, _, code := run(t, dir, "--json")
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0", code)
+	}
+	var result map[string]any
+	if err := json.Unmarshal([]byte(stdout), &result); err != nil {
+		t.Fatalf("invalid JSON: %v\n%s", err, stdout)
+	}
+	if result["project_found"] != false {
+		t.Errorf("project_found = %v, want false", result["project_found"])
+	}
+}
+
+func TestE2E_NoArgs_Dashboard(t *testing.T) {
+	t.Parallel()
+	dir := setupProject(t)
+	stdout, stderr, code := run(t, dir)
+	if code != 0 {
+		t.Fatalf("exit code = %d, stderr: %s", code, stderr)
+	}
+	for _, want := range []string{"yat · spec/", "Up next (ready):", testItemID} {
+		if !strings.Contains(stdout, want) {
+			t.Errorf("dashboard missing %q, got:\n%s", want, stdout)
+		}
+	}
+}
+
+func TestE2E_NoArgs_Dashboard_JSON(t *testing.T) {
+	t.Parallel()
+	dir := setupProject(t)
+	stdout, _, code := run(t, dir, "--json")
+	if code != 0 {
+		t.Fatalf("exit code = %d", code)
+	}
+	var result map[string]any
+	if err := json.Unmarshal([]byte(stdout), &result); err != nil {
+		t.Fatalf("invalid JSON: %v\n%s", err, stdout)
+	}
+	if result["project_found"] != true {
+		t.Errorf("project_found = %v, want true", result["project_found"])
+	}
+	if _, ok := result["counts"]; !ok {
+		t.Error("expected counts in JSON output")
 	}
 }
 
