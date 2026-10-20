@@ -3,12 +3,14 @@ package cmd
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/ryanlewis/yat/internal/config"
+	"github.com/ryanlewis/yat/internal/item"
 )
 
 // newAddContext loads dir with cfg and captures output.
@@ -324,5 +326,54 @@ func TestAddCmd_TypeTakesExistingCasing(t *testing.T) {
 	got := readFile(t, filepath.Join(dir, "tasks", "TK-007-lower.md"))
 	if !strings.Contains(got, "\ntype: Task\n") {
 		t.Errorf("want type: Task, got:\n%s", got)
+	}
+}
+
+func TestAddCmd_ConcurrentAddsTakeDistinctIDs(t *testing.T) {
+	dir := addTestDir(t)
+
+	// Every context is loaded before any add runs, as when several yat add
+	// processes start at once.
+	const n = 8
+
+	rcs := make([]*RunContext, n)
+	for i := range rcs {
+		rcs[i], _ = newAddContext(t, dir, defaultConfig(), false)
+	}
+
+	errs := make(chan error, n)
+
+	for i, rc := range rcs {
+		go func() {
+			errs <- (&AddCmd{Title: fmt.Sprintf("Task %d", i), Type: "Task", stdin: strings.NewReader("")}).Run(rc)
+		}()
+	}
+
+	for range n {
+		if err := <-errs; err != nil {
+			t.Fatalf("Run: %v", err)
+		}
+	}
+
+	items, err := item.LoadAll(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ids := map[string]bool{}
+	for _, it := range items {
+		if ids[it.ID] {
+			t.Errorf("id %s taken twice", it.ID)
+		}
+
+		ids[it.ID] = true
+	}
+
+	if len(items) != 3+n {
+		t.Errorf("got %d items, want %d", len(items), 3+n)
+	}
+
+	if _, err := os.Stat(filepath.Join(dir, item.LockName)); !os.IsNotExist(err) {
+		t.Errorf("lock file left behind: %v", err)
 	}
 }

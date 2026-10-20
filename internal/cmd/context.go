@@ -33,6 +33,9 @@ type RunContext struct {
 
 	// fieldAliases maps canonical field names to the keys item files use.
 	fieldAliases map[string]string
+
+	// parseOpts are the options items were loaded with.
+	parseOpts item.ParseOptions
 }
 
 // statusKey is the canonical frontmatter key for an item's status.
@@ -101,6 +104,7 @@ func NewRunContext(dir string, jsonOutput bool, cfg *config.Config) (*RunContext
 
 		statusIsAlias: statusIsAlias,
 		fieldAliases:  cfg.FieldAliases,
+		parseOpts:     parseOpts,
 	}, nil
 }
 
