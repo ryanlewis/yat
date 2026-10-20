@@ -400,11 +400,12 @@ func TestInstallReplacesSymlinkToOwnFile(t *testing.T) {
 }
 
 func TestInstallRefusesOtherSymlinks(t *testing.T) {
-	cases := map[string]string{
-		"foreign target": "---\nname: other\n---\nnot yat\n",
-		"dangling":       "",
+	cases := map[string]struct{ content, msg string }{
+		"foreign target": {"---\nname: other\n---\nnot yat\n", "symlink to a file yat did not write"},
+		"dangling":       {"", "dangling symlink"},
 	}
-	for label, content := range cases {
+	for label, tc := range cases {
+		content := tc.content
 		t.Run(label, func(t *testing.T) {
 			a, _ := Lookup(claudeName)
 			dir, other := t.TempDir(), t.TempDir()
@@ -419,8 +420,8 @@ func TestInstallRefusesOtherSymlinks(t *testing.T) {
 			}
 
 			err := Install(a, dir)
-			if err == nil || !strings.Contains(err.Error(), "symlink") {
-				t.Fatalf("Install err = %v, want a symlink refusal", err)
+			if err == nil || !strings.Contains(err.Error(), tc.msg) {
+				t.Fatalf("Install err = %v, want %q", err, tc.msg)
 			}
 			data, readErr := os.ReadFile(target)
 			if content == "" && !os.IsNotExist(readErr) {
