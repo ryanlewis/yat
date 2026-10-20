@@ -99,6 +99,7 @@ yat blocked --json | jq -r '.[] | "\(.id) waits on \(.waiting_on | join(", "))"'
 - `item "<id>" may already exist in <file>, which was skipped as unreadable; make it readable or pass another --id` — `yat add --id` names an id that a skipped file's name starts with (followed by `-` or `.`). Fix the file or choose another `--id`.
 - `item "<id>" already exists` / `refusing to overwrite <file>` — `yat add` would collide with an existing item or file. Choose another `--id`.
 - `timed out waiting for another yat command to finish in <dir>` — another `yat add`, `yat start` or `yat complete` held the items directory's lock for over 10 seconds. Running these at the same time is safe (concurrent adds take distinct ids); retry.
+- `warning: could not lock <dir>: <reason>; continuing without a lock` (stderr) — the items directory's filesystem cannot lock (some network or FUSE mounts), or on Windows the folder cannot hold the lock file. The command still ran. Do not run `yat add`, `yat start` or `yat complete` in parallel there.
 - `item <id> has unknown dependency "<dep>"` — no item has that id. When files were skipped, it ends `(N files were skipped as unreadable; see warnings)`: the item may be in one of them.
 - `dependency "<id>" not found` — a `--dep` names no item. Check it with `yat list --json`.
 - `item "<id>" not found` — check the ID with `yat list --json`. IDs are matched exactly.

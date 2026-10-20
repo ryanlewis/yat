@@ -20,23 +20,46 @@ const lockPerm fs.FileMode = 0o600
 // lockStale is the age at which a lock is taken to be left by a crashed run.
 var lockStale = 5 * time.Second
 
+// openLock creates the lock file, replaced in tests.
+var openLock = func(path string) (*os.File, error) {
+	return os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, lockPerm)
+}
+
 // LockDir takes a short-lived lock on dir by creating lockName in it with
 // O_EXCL, waiting while another process holds it. A lock older than lockStale
 // is taken to be left behind by a run that crashed and is removed. Call the
 // returned function to release the lock.
+//
+// Where lockName cannot be created for lack of permission (a folder the user
+// cannot write to, holding files they can), it warns on stderr and returns
+// without a lock.
 func LockDir(dir string) (func(), error) {
 	path := filepath.Join(dir, lockName)
 	deadline := time.Now().Add(lockWait)
+	denied := false
 
 	for {
-		f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, lockPerm)
+		f, err := openLock(path)
 		if err == nil {
 			_ = f.Close()
 
 			return func() { _ = os.Remove(path) }, nil
 		}
 
-		if !errors.Is(err, fs.ErrExist) {
+		// Windows also refuses to create a file that is being deleted, as when
+		// another run is releasing the lock, so the folder is taken to be unable
+		// to hold the lock only when it is refused twice with no lock file there.
+		if errors.Is(err, fs.ErrPermission) {
+			if _, statErr := os.Stat(path); errors.Is(statErr, fs.ErrNotExist) {
+				if denied {
+					return skipLock(dir, err), nil
+				}
+
+				denied = true
+
+				continue
+			}
+		} else if !errors.Is(err, fs.ErrExist) {
 			return nil, fmt.Errorf("locking %s: %w", dir, err)
 		}
 

@@ -10,9 +10,15 @@ import (
 	"time"
 )
 
+// flock is syscall.Flock, replaced in tests.
+var flock = syscall.Flock
+
 // LockDir takes an advisory lock (flock) on dir itself, waiting while another
 // process holds it. No file is created, and the kernel drops the lock if the
 // process dies. Call the returned function to release it.
+//
+// Where the filesystem cannot lock (some NFS, SMB and FUSE mounts), it warns on
+// stderr and returns without a lock.
 func LockDir(dir string) (func(), error) {
 	f, err := os.Open(dir)
 	if err != nil {
@@ -23,10 +29,16 @@ func LockDir(dir string) (func(), error) {
 	deadline := time.Now().Add(lockWait)
 
 	for {
-		err = syscall.Flock(fd, syscall.LOCK_EX|syscall.LOCK_NB)
+		err = flock(fd, syscall.LOCK_EX|syscall.LOCK_NB)
 		if err == nil {
 			// Closing the descriptor releases the lock.
 			return func() { _ = f.Close() }, nil
+		}
+
+		if cannotLock(err) {
+			_ = f.Close()
+
+			return skipLock(dir, err), nil
 		}
 
 		if !errors.Is(err, syscall.EWOULDBLOCK) && !errors.Is(err, syscall.EINTR) {
@@ -43,4 +55,16 @@ func LockDir(dir string) (func(), error) {
 
 		time.Sleep(lockPoll)
 	}
+}
+
+// cannotLock reports whether err, from flock, means the filesystem does not
+// support locking rather than that another process holds the lock.
+func cannotLock(err error) bool {
+	for _, errno := range []syscall.Errno{syscall.ENOTSUP, syscall.EOPNOTSUPP, syscall.ENOLCK, syscall.EROFS} {
+		if errors.Is(err, errno) {
+			return true
+		}
+	}
+
+	return false
 }
