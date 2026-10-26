@@ -2,7 +2,7 @@
 
 BINARY_NAME=yat
 # Keep in step with the version in .github/workflows/ci.yml.
-GOLANGCI_LINT_VERSION=v2.11.4
+GOLANGCI_LINT_VERSION=v2.15.0
 COVERAGE_FILE=coverage.out
 
 build:
