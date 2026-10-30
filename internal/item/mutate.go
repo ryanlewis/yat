@@ -407,8 +407,9 @@ func writeFileAtomic(path string, data []byte) error {
 
 	dir := filepath.Dir(path)
 
-	// The name ends in .tmp, not .md, so LoadAll never picks it up.
-	tmp, err := os.CreateTemp(dir, tempPattern(path))
+	// The name ends in .tmp, not .md, so LoadAll never picks it up. It leaves out
+	// the item's name, so it fits wherever that name does.
+	tmp, err := os.CreateTemp(dir, ".yat-*.tmp")
 	if err != nil {
 		if canWriteInPlace(err) {
 			return os.WriteFile(path, data, info.Mode().Perm())
@@ -437,28 +438,6 @@ func writeFileAtomic(path string, data []byte) error {
 	syncDir(dir)
 
 	return nil
-}
-
-// maxNameLen is the longest file name, in bytes, most filesystems allow (NAME_MAX).
-const maxNameLen = 255
-
-// tempPattern returns the os.CreateTemp pattern for a hidden temp file next to
-// path: ".<name>.*.tmp", with the name cut short, on a rune boundary, so the
-// temp file's name fits in maxNameLen bytes even when path's name nearly fills it.
-func tempPattern(path string) string {
-	// CreateTemp puts up to 10 random digits in place of the "*".
-	const extra = len(".") + len(".") + 10 + len(".tmp")
-
-	name := filepath.Base(path)
-	if n := maxNameLen - extra; len(name) > n {
-		for n > 0 && !utf8.RuneStart(name[n]) {
-			n--
-		}
-
-		name = name[:n]
-	}
-
-	return "." + name + ".*.tmp"
 }
 
 // writableInfo returns the file info of the file at path, refusing a file the
