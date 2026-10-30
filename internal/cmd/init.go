@@ -511,7 +511,9 @@ func isTerminal(r io.Reader) bool {
 func promptDirInteractive(stdout io.Writer, stdin io.Reader) (string, prompter, error) {
 	showDirSuggestions(stdout)
 
-	rl, err := readline.NewFromConfig(&readline.Config{AutoComplete: dirAutoCompleter{}})
+	// No history: the confirms share this instance, and the up arrow at one
+	// would fill in a directory name.
+	rl, err := readline.NewFromConfig(&readline.Config{AutoComplete: dirAutoCompleter{}, HistoryLimit: -1})
 	if err != nil {
 		fmt.Fprintf(stdout, "Note: tab completion unavailable (%v)\n", err)
 		scanner := bufio.NewScanner(stdin)
