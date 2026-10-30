@@ -809,3 +809,79 @@ func TestLoad_MalformedConfigNamesFile(t *testing.T) {
 		t.Errorf("error %q does not name %s", err, path)
 	}
 }
+
+func TestLoad_InvalidConfigNamesFile(t *testing.T) {
+	root := t.TempDir()
+	sub := filepath.Join(root, "sub")
+	if err := os.Mkdir(sub, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	path := filepath.Join(root, ".yat.yaml")
+	content := []byte("statuses:\n  done: [shipped]\n  active: [shipped]\n  initial: [todo]\n")
+	if err := os.WriteFile(path, content, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	t.Chdir(sub)
+
+	_, err := config.Load()
+	if err == nil {
+		t.Fatal("expected an error for invalid config")
+	}
+
+	want := "invalid config " + path + ": "
+	if !strings.HasPrefix(err.Error(), want) {
+		t.Errorf("error %q does not start with %q", err, want)
+	}
+
+	if !strings.Contains(err.Error(), `status "shipped" appears in both`) {
+		t.Errorf("error %q lost the validation message", err)
+	}
+}
+
+func TestLoadWithFallback_MergedConflictNamesBothFiles(t *testing.T) {
+	cwdDir := t.TempDir()
+	t.Chdir(cwdDir)
+
+	cwdPath := filepath.Join(cwdDir, ".yat.yaml")
+	if err := os.WriteFile(cwdPath, []byte("field_aliases:\n  title: name\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	itemsDir := t.TempDir()
+	itemsPath := filepath.Join(itemsDir, ".yat.yaml")
+	if err := os.WriteFile(itemsPath, []byte("field_aliases:\n  phase: name\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := config.LoadWithFallback(itemsDir)
+	if err == nil {
+		t.Fatal("expected an error for conflicting aliases")
+	}
+
+	for _, p := range []string{cwdPath, itemsPath} {
+		if !strings.Contains(err.Error(), p) {
+			t.Errorf("error %q does not name %s", err, p)
+		}
+	}
+}
+
+func TestLoad_ReadErrorNamesPathOnce(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, ".yat.yaml")
+	if err := os.Mkdir(path, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	t.Chdir(dir)
+
+	_, err := config.Load()
+	if err == nil {
+		t.Fatal("expected an error reading a directory as config")
+	}
+
+	if n := strings.Count(err.Error(), path); n != 1 {
+		t.Errorf("error %q names %s %d times, want once", err, path, n)
+	}
+}
