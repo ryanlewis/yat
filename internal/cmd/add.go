@@ -644,12 +644,43 @@ func (rc *RunContext) checkReadsBack(data []byte, it *item.Item) error {
 		ValidStatuses: item.NewStatusSet(rc.Statuses.AllValid()),
 	})
 
-	if err != nil || got == nil || got.ID != it.ID || got.Title != it.Title || got.Type != it.Type ||
-		got.Priority != it.Priority || got.Points != it.Points || got.Status != it.Status ||
-		got.Phase != it.Phase || !slices.Equal(got.Dependencies, it.Dependencies) {
-		return fmt.Errorf("cannot write %s: it would not read back as written under this project's field_aliases",
-			it.FilePath)
+	const refusal = "cannot write %s: it would not read back as written under this project's field_aliases"
+
+	switch {
+	case err != nil:
+		return fmt.Errorf(refusal+": %w", it.FilePath, err)
+	case got == nil:
+		return fmt.Errorf(refusal+": yat would skip it", it.FilePath)
+	}
+
+	if field := differingField(got, it); field != "" {
+		return fmt.Errorf(refusal+": field %q differs", it.FilePath, field)
 	}
 
 	return nil
+}
+
+// differingField names the first field checkReadsBack compares that differs
+// between got and want, or returns "" if none does.
+func differingField(got, want *item.Item) string {
+	switch {
+	case got.ID != want.ID:
+		return "id"
+	case got.Title != want.Title:
+		return "title"
+	case got.Type != want.Type:
+		return "type"
+	case got.Priority != want.Priority:
+		return "priority"
+	case got.Points != want.Points:
+		return "points"
+	case got.Status != want.Status:
+		return "status"
+	case got.Phase != want.Phase:
+		return "phase"
+	case !slices.Equal(got.Dependencies, want.Dependencies):
+		return "dependencies"
+	}
+
+	return ""
 }
