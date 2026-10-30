@@ -107,7 +107,12 @@ func rewriteStatus(fm []byte, fieldName, alias string, newStatus Status, path st
 		keys = append(keys, alias)
 	}
 
+	// Without the parsed keys there is no telling the status key's line from a
+	// line inside another key's quoted value.
 	pairs := topLevelPairs(fm)
+	if pairs == nil {
+		return nil, "", fmt.Errorf("cannot update %s in %s: frontmatter is not a valid YAML mapping", fieldName, path)
+	}
 
 	for _, key = range keys {
 		if matches := keyLineMatches(fm, statusFieldRe(key), pairs, key); len(matches) > 0 {
@@ -142,14 +147,9 @@ func rewriteStatus(fm []byte, fieldName, alias string, newStatus Status, path st
 
 // keyLineMatches returns the submatch indexes of the re matches that start at
 // a top-level key named key. A line inside another key's multi-line quoted
-// value can also match re, and must not be rewritten. When fm does not parse
-// (pairs is nil), every match is returned.
+// value can also match re, and must not be rewritten.
 func keyLineMatches(fm []byte, re *regexp.Regexp, pairs []*yaml.Node, key string) [][]int {
 	matches := re.FindAllSubmatchIndex(fm, -1)
-	if pairs == nil {
-		return matches
-	}
-
 	starts := make(map[int]bool)
 
 	for i := 0; i+1 < len(pairs); i += 2 {
