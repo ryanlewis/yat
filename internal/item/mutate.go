@@ -432,7 +432,11 @@ var (
 // Hard links to the file are not kept: the path gets a new inode.
 //
 // Where the temp file cannot be created or renamed over the file (a read-only
-// directory, a bind-mounted file), it falls back to writing the file in place.
+// directory, a bind-mounted file), it falls back to writing the file in place,
+// which gives a weaker guarantee; see writeInPlace. If the temp file was
+// written but could not be renamed, it is kept until the in-place write has
+// succeeded, and if that write fails the error names it, so the new contents
+// can be recovered from it.
 func writeFileAtomic(path string, data []byte) error {
 	info, err := writableInfo(path)
 	if err != nil {
@@ -446,7 +450,7 @@ func writeFileAtomic(path string, data []byte) error {
 	tmp, err := createTemp(dir, ".yat-*.tmp")
 	if err != nil {
 		if canWriteInPlace(err) {
-			return writeInPlace(path, data, info.Mode().Perm())
+			return writeInPlace(path, data)
 		}
 
 		return err
@@ -460,13 +464,19 @@ func writeFileAtomic(path string, data []byte) error {
 	}
 
 	if err := renameFile(tmp.Name(), path); err != nil {
-		_ = os.Remove(tmp.Name())
+		if !canWriteInPlace(err) {
+			_ = os.Remove(tmp.Name())
 
-		if canWriteInPlace(err) {
-			return writeInPlace(path, data, info.Mode().Perm())
+			return err
 		}
 
-		return err
+		if err := writeInPlace(path, data); err != nil {
+			return fmt.Errorf("%w (the new contents are in %s)", err, tmp.Name())
+		}
+
+		_ = os.Remove(tmp.Name())
+
+		return nil
 	}
 
 	syncDir(dir)
@@ -474,19 +484,43 @@ func writeFileAtomic(path string, data []byte) error {
 	return nil
 }
 
-// writeInPlace writes data over the file at path.
-func writeInPlace(path string, data []byte, perm fs.FileMode) error {
-	f, err := openInPlace(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, perm)
+// writeInPlace writes data over the existing file at path, keeping its inode.
+// It writes from the start without truncating, syncs, then cuts the file to
+// the new length and syncs again. A failed write or sync can leave the start of
+// the new contents over the old, followed by the rest of the old, but never a
+// file shorter than the old or the new contents, whichever is shorter. A
+// failed truncate leaves the new contents followed by the end of the old.
+func writeInPlace(path string, data []byte) error {
+	f, err := openInPlace(path, os.O_WRONLY, 0)
 	if err != nil {
 		return err
 	}
 
-	_, err = f.Write(data)
-	if err1 := f.Close(); err1 != nil && err == nil {
-		err = err1
+	if err := writeOver(f, data); err != nil {
+		_ = f.Close()
+
+		return err
 	}
 
-	return err
+	return f.Close()
+}
+
+// writeOver writes data to the start of f, syncs it, truncates f to the length
+// of data and syncs again.
+func writeOver(f *os.File, data []byte) error {
+	if _, err := f.WriteAt(data, 0); err != nil {
+		return err
+	}
+
+	if err := f.Sync(); err != nil {
+		return err
+	}
+
+	if err := f.Truncate(int64(len(data))); err != nil {
+		return err
+	}
+
+	return f.Sync()
 }
 
 // writableInfo returns the file info of the file at path, refusing a file the
