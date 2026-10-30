@@ -248,6 +248,7 @@ For an agent yat has no adapter for, `yat skill show` prints the rendered `SKILL
 make test      # run tests with race detection
 make lint      # golangci-lint
 make coverage  # open HTML coverage report
+make crap      # top 20 functions by CRAP score (CRAP_TOP=N for more)
 ```
 
 ## Licence
