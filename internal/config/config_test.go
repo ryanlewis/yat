@@ -737,3 +737,50 @@ func TestValidate_DuplicateAliasErrorIsStable(t *testing.T) {
 		t.Fatalf("Validate: %v", err)
 	}
 }
+
+func TestStatusGroups_DefaultsAndMembership(t *testing.T) {
+	sg := config.StatusGroups{
+		Done:    []string{"shipped", "dropped"},
+		Active:  []string{"doing", "review"},
+		Initial: []string{"backlog", "todo"},
+	}
+
+	if got := sg.DefaultDone(); got != "shipped" {
+		t.Errorf("DefaultDone() = %q, want shipped", got)
+	}
+
+	if got := sg.DefaultActive(); got != "doing" {
+		t.Errorf("DefaultActive() = %q, want doing", got)
+	}
+
+	if got := sg.DefaultInitial(); got != "backlog" {
+		t.Errorf("DefaultInitial() = %q, want backlog", got)
+	}
+
+	tests := []struct {
+		status                string
+		initial, active, done bool
+	}{
+		{"backlog", true, false, false},
+		{"todo", true, false, false},
+		{"review", false, true, false},
+		{"dropped", false, false, true},
+		{"unknown", false, false, false},
+		{"", false, false, false},
+		{"Todo", false, false, false}, // matching is case-sensitive
+	}
+
+	for _, tt := range tests {
+		if got := sg.IsInitial(tt.status); got != tt.initial {
+			t.Errorf("IsInitial(%q) = %v, want %v", tt.status, got, tt.initial)
+		}
+
+		if got := sg.IsActive(tt.status); got != tt.active {
+			t.Errorf("IsActive(%q) = %v, want %v", tt.status, got, tt.active)
+		}
+
+		if got := sg.IsDone(tt.status); got != tt.done {
+			t.Errorf("IsDone(%q) = %v, want %v", tt.status, got, tt.done)
+		}
+	}
+}
