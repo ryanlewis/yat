@@ -18,7 +18,7 @@ var ErrFileExists = errors.New("file already exists")
 func CreateFile(path string, data []byte, perm fs.FileMode) error {
 	dir := filepath.Dir(path)
 
-	tmp, err := os.CreateTemp(dir, "."+filepath.Base(path)+".*.tmp")
+	tmp, err := os.CreateTemp(dir, tempPattern(path))
 	if err != nil {
 		return err
 	}

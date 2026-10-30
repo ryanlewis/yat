@@ -533,3 +533,33 @@ func TestSetStatus_LongFileName(t *testing.T) {
 		})
 	}
 }
+
+// tempPattern keeps the temp file's name within the name limit and never cuts
+// a rune in half.
+func TestTempPattern(t *testing.T) {
+	tests := []struct {
+		name string
+		base string
+		want string
+	}{
+		{name: "short name kept", base: "a.md", want: ".a.md.*.tmp"},
+		{name: "longest name kept", base: strings.Repeat("a", 239), want: "." + strings.Repeat("a", 239) + ".*.tmp"},
+		{name: "long name cut", base: strings.Repeat("a", 250), want: "." + strings.Repeat("a", 239) + ".*.tmp"},
+		{name: "cut on a rune boundary", base: "a" + strings.Repeat("é", 125),
+			want: ".a" + strings.Repeat("é", 119) + ".*.tmp"},
+		{name: "cut before a split rune", base: strings.Repeat("é", 125), want: "." + strings.Repeat("é", 119) + ".*.tmp"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := tempPattern(filepath.Join("dir", tt.base))
+			if got != tt.want {
+				t.Errorf("got %q, want %q", got, tt.want)
+			}
+
+			if n := len(strings.Replace(got, "*", "4294967295", 1)); n > maxNameLen {
+				t.Errorf("temp name is %d bytes, want at most %d", n, maxNameLen)
+			}
+		})
+	}
+}
