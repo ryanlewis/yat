@@ -2,9 +2,11 @@ package item
 
 import (
 	"errors"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"syscall"
 	"testing"
 )
@@ -89,6 +91,37 @@ func failRename(t *testing.T, errno syscall.Errno) {
 	}
 
 	t.Cleanup(func() { renameFile = orig })
+}
+
+// failInPlaceWrite makes writing the item in place fail for the rest of the
+// test: openInPlace opens the file, with whatever flags it is given, and closes
+// it, so the write that follows fails.
+func failInPlaceWrite(t *testing.T) {
+	t.Helper()
+
+	orig := openInPlace
+	openInPlace = func(name string, flag int, perm fs.FileMode) (*os.File, error) {
+		f, err := orig(name, flag, perm)
+		if err == nil {
+			err = f.Close()
+		}
+
+		return f, err
+	}
+
+	t.Cleanup(func() { openInPlace = orig })
+}
+
+// tempFiles returns the paths of the temp files left in dir.
+func tempFiles(t *testing.T, dir string) []string {
+	t.Helper()
+
+	paths, err := filepath.Glob(filepath.Join(dir, ".yat-*.tmp"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	return paths
 }
 
 func TestWriteFileAtomic_CreateTempErrorReturned(t *testing.T) {
@@ -182,4 +215,78 @@ func TestWriteFileAtomic_RenameRefusedWritesInPlace(t *testing.T) {
 
 	assertSameInode(t, path, before)
 	assertOnlyItem(t, path)
+}
+
+// When the temp file cannot be created and the in-place write then fails, the
+// item keeps its old contents rather than being emptied.
+func TestWriteFileAtomic_CreateTempDeniedFailedWriteKeepsItem(t *testing.T) {
+	failCreateTemp(t, syscall.EACCES)
+	failInPlaceWrite(t)
+
+	path, _ := writeSeamFixture(t)
+
+	if err := writeFileAtomic(path, []byte(seamNew)); !errors.Is(err, os.ErrClosed) {
+		t.Fatalf("err = %v, want ErrClosed", err)
+	}
+
+	if got := readMutateFile(t, path); got != seamOld {
+		t.Errorf("contents = %q, want the old contents %q", got, seamOld)
+	}
+
+	assertOnlyItem(t, path)
+}
+
+// When the rename is refused and the in-place write then fails, the item keeps
+// its old contents, the temp file holding the new contents is kept, and the
+// error names it.
+func TestWriteFileAtomic_RenameRefusedFailedWriteKeepsTemp(t *testing.T) {
+	failRename(t, syscall.EBUSY)
+	failInPlaceWrite(t)
+
+	path, _ := writeSeamFixture(t)
+
+	err := writeFileAtomic(path, []byte(seamNew))
+	if !errors.Is(err, os.ErrClosed) {
+		t.Fatalf("err = %v, want ErrClosed", err)
+	}
+
+	if got := readMutateFile(t, path); got != seamOld {
+		t.Errorf("contents = %q, want the old contents %q", got, seamOld)
+	}
+
+	tmps := tempFiles(t, filepath.Dir(path))
+	if len(tmps) != 1 {
+		t.Fatalf("temp files = %v, want one holding the new contents", tmps)
+	}
+
+	if got := readMutateFile(t, tmps[0]); got != seamNew {
+		t.Errorf("temp file contents = %q, want %q", got, seamNew)
+	}
+
+	if !strings.Contains(err.Error(), tmps[0]) {
+		t.Errorf("err = %q, want it to name the temp file %s", err, tmps[0])
+	}
+}
+
+// Writing in place leaves exactly the new contents, whether they are shorter or
+// longer than the old.
+func TestWriteFileAtomic_InPlaceResizes(t *testing.T) {
+	for _, tc := range []struct{ name, old, next string }{
+		{"shorter", "old contents", "new"},
+		{"longer", "old", "new contents"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			failCreateTemp(t, syscall.EROFS)
+
+			path := writeMutateFixture(t, "item.md", tc.old)
+
+			if err := writeFileAtomic(path, []byte(tc.next)); err != nil {
+				t.Fatalf("writeFileAtomic: %v", err)
+			}
+
+			if got := readMutateFile(t, path); got != tc.next {
+				t.Errorf("contents = %q, want %q", got, tc.next)
+			}
+		})
+	}
 }
