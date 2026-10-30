@@ -182,8 +182,9 @@ func TestE2E_MalformedConfig(t *testing.T) {
 	if code != 1 {
 		t.Errorf("exit code = %d, want 1", code)
 	}
-	if !strings.HasPrefix(stderr, "error: yaml: ") {
-		t.Errorf("stderr = %q, want a yaml error", stderr)
+	wantPrefix := "error: parsing config " + filepath.Join(dir, ".yat.yaml") + ": yaml: "
+	if !strings.HasPrefix(stderr, wantPrefix) {
+		t.Errorf("stderr = %q, want prefix %q", stderr, wantPrefix)
 	}
 	if stdout != "" {
 		t.Errorf("expected empty stdout, got: %s", stdout)

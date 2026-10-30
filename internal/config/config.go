@@ -169,23 +169,25 @@ func loadWalk(startDir string) (Config, bool, error) {
 // Returns the parsed config and true if found, or zero Config and false if not.
 func tryLoadFromDir(dir string) (Config, bool, error) {
 	for _, name := range ConfigNames {
-		data, readErr := os.ReadFile(filepath.Join(dir, name))
+		path := filepath.Join(dir, name)
+
+		data, readErr := os.ReadFile(path)
 		if readErr != nil {
 			if errors.Is(readErr, fs.ErrNotExist) {
 				continue
 			}
 
-			return Config{}, false, readErr
+			return Config{}, false, fmt.Errorf("reading config %s: %w", path, readErr)
 		}
 
 		var cfg Config
 		if err := yaml.Unmarshal(data, &cfg); err != nil {
-			return Config{}, false, err
+			return Config{}, false, fmt.Errorf("parsing config %s: %w", path, err)
 		}
 
 		expanded, expandErr := ExpandTilde(cfg.Dir)
 		if expandErr != nil {
-			return Config{}, false, expandErr
+			return Config{}, false, fmt.Errorf("config %s: %w", path, expandErr)
 		}
 
 		cfg.Dir = expanded
