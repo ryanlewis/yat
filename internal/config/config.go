@@ -142,13 +142,22 @@ func LoadWithFallback(fallbackDir string) (Config, error) {
 // error names both.
 func describeSources(primaryPath, secondaryPath string) string {
 	switch {
-	case primaryPath != "" && secondaryPath != "":
+	case primaryPath != "" && secondaryPath != "" && !sameFile(primaryPath, secondaryPath):
 		return primaryPath + " (merged with " + secondaryPath + ")"
 	case primaryPath != "":
 		return primaryPath
 	default:
 		return secondaryPath
 	}
+}
+
+// sameFile reports whether both paths name the same file. A relative dir in
+// the config makes the secondary search find the primary file again.
+func sameFile(a, b string) bool {
+	infoA, errA := os.Stat(a)
+	infoB, errB := os.Stat(b)
+
+	return errA == nil && errB == nil && os.SameFile(infoA, infoB)
 }
 
 // loadWalk searches for a config file starting from startDir and walking up
