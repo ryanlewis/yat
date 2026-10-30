@@ -90,6 +90,8 @@ func TestLoadAll_ReturnsSkippedPaths(t *testing.T) {
 	writeFile(t, filepath.Join(dir, "a.md"), "---\nid: A-1\n---\n")
 	writeFile(t, filepath.Join(dir, "list.md"), "---\n- a\n---\n")
 
+	writeFile(t, filepath.Join(dir, "notes.md"), "---\n\nMeeting notes\n")
+
 	broken := filepath.Join(dir, "broken.md")
 	if err := os.Symlink("nowhere.md", broken); err != nil {
 		t.Fatal(err)
@@ -105,7 +107,8 @@ func TestLoadAll_ReturnsSkippedPaths(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	want := []string{broken} // not list.md: it is readable and holds no item
+	// Not list.md or notes.md: they are readable and hold no item.
+	want := []string{broken}
 	if !slices.Equal(skipped, want) {
 		t.Errorf("skipped = %q, want %q", skipped, want)
 	}
@@ -134,6 +137,16 @@ func TestLoadAll_SkipsBadFilesWithWarning(t *testing.T) {
 				return p
 			},
 			want: "frontmatter is not a YAML mapping",
+		},
+		{
+			name: "frontmatter never closes",
+			setup: func(t *testing.T, dir string) string {
+				p := filepath.Join(dir, "draft.md")
+				writeFile(t, p, "---\nid: TK-001\n--- x\n")
+
+				return p
+			},
+			want: "frontmatter has no closing --- line",
 		},
 		{
 			name: "frontmatter is a sequence",

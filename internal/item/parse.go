@@ -32,13 +32,18 @@ const statusField = "status"
 // ErrMissingID is returned when a file has item-like frontmatter but no id field.
 var ErrMissingID = errors.New("item-like frontmatter has no id field")
 
+// ErrUnclosedFrontmatter is returned when a file opens frontmatter with a ---
+// line but no later line closes it.
+var ErrUnclosedFrontmatter = errors.New("frontmatter has no closing --- line")
+
 // ErrNotMapping is returned when a file's frontmatter is valid YAML but not a
 // mapping (e.g. a line of prose between --- delimiters), so it cannot be an item.
 var ErrNotMapping = errors.New("frontmatter is not a YAML mapping")
 
 // ParseFile reads a markdown file and extracts the YAML frontmatter into an Item.
 // The body (everything after the closing ---) is stored in Body.
-// Returns nil if the file has no valid frontmatter or no id field.
+// Returns nil if the file has no frontmatter or no id field, and
+// ErrUnclosedFrontmatter (wrapped) if its frontmatter never closes.
 func ParseFile(path string) (*Item, error) {
 	return ParseFileWithOptions(path, ParseOptions{})
 }
@@ -54,9 +59,10 @@ func ParseFileWithOptions(path string, opts ParseOptions) (*Item, error) {
 }
 
 // Parse extracts an Item from raw file bytes.
-// Returns nil (no error) if the file has no valid frontmatter.
+// Returns nil (no error) if the file has no frontmatter.
 // Returns ErrMissingID (wrapped) if frontmatter contains item fields but no id.
 // Returns ErrNotMapping (wrapped) if the frontmatter is YAML but not a mapping.
+// Returns ErrUnclosedFrontmatter (wrapped) if the frontmatter never closes.
 // Returns an error if status or priority values are not recognized.
 func Parse(data []byte, path string) (*Item, error) {
 	return ParseWithOptions(data, path, ParseOptions{})
@@ -67,7 +73,7 @@ func Parse(data []byte, path string) (*Item, error) {
 func ParseWithOptions(data []byte, path string, opts ParseOptions) (*Item, error) {
 	fm, body, ok := splitFrontmatter(data)
 	if !ok {
-		return nil, nil
+		return nil, unclosedError(data, path)
 	}
 
 	if hasDirective(fm, "ignore") {
@@ -666,36 +672,76 @@ func splitFrontmatter(data []byte) (fm, body []byte, ok bool) {
 // frontmatter (starting with the newline after the opening ---) and
 // data[bodyStart:] is the body. A leading UTF-8 BOM and blank lines are skipped.
 func frontmatterBounds(data []byte) (fmStart, fmEnd, bodyStart int, ok bool) {
-	start := len(data) - len(bytes.TrimLeft(bytes.TrimPrefix(data, utf8BOM), "\n\r"))
-
-	if !bytes.HasPrefix(data[start:], frontmatterDelimiter) {
+	fmStart, ok = openingEnd(data)
+	if !ok {
 		return 0, 0, 0, false
 	}
 
-	// The opening --- must be followed by a newline (LF or CRLF), not arbitrary text.
-	fmStart = start + len(frontmatterDelimiter)
-	rest := data[fmStart:]
-	if len(rest) == 0 || !isLineBreak(rest[0]) {
-		return 0, 0, 0, false
-	}
-	idx := bytes.Index(rest, []byte("\n---"))
+	idx, closeLen := closingLine(data[fmStart:])
 	if idx < 0 {
-		return 0, 0, 0, false
-	}
-
-	// The closing --- must be on its own line (followed by newline, CR, or EOF).
-	afterClose := rest[idx+len("\n---"):]
-	if len(afterClose) > 0 && !isLineBreak(afterClose[0]) {
 		return 0, 0, 0, false
 	}
 
 	fmEnd = fmStart + idx
 
 	// Body starts after the closing --- and its trailing newline
-	bodyStart = skipByte(data, fmEnd+len("\n---"), '\r')
+	bodyStart = skipByte(data, fmEnd+closeLen, '\r')
 	bodyStart = skipByte(data, bodyStart, '\n')
 
 	return fmStart, fmEnd, bodyStart, true
+}
+
+// unclosedError returns ErrUnclosedFrontmatter (wrapped) when data has no
+// frontmatter but opens with a --- line, and nil when it does not open with one.
+func unclosedError(data []byte, path string) error {
+	if _, ok := openingEnd(data); ok {
+		return fmt.Errorf("%w: %s", ErrUnclosedFrontmatter, path)
+	}
+
+	return nil
+}
+
+// openingEnd returns the index just past the opening --- in data, and whether
+// data opens with one. A leading UTF-8 BOM and blank lines are skipped.
+func openingEnd(data []byte) (int, bool) {
+	start := len(data) - len(bytes.TrimLeft(bytes.TrimPrefix(data, utf8BOM), "\n\r"))
+
+	if !bytes.HasPrefix(data[start:], frontmatterDelimiter) {
+		return 0, false
+	}
+
+	// The opening --- must be followed by a newline (LF or CRLF), not arbitrary text.
+	end := start + len(frontmatterDelimiter)
+	if end == len(data) || !isLineBreak(data[end]) {
+		return 0, false
+	}
+
+	return end, true
+}
+
+// closingLine finds the line that closes the frontmatter in rest: --- on its
+// own line, optionally followed by spaces or tabs. It returns the index of the
+// newline before that line and the line's length counting that newline, or -1.
+func closingLine(rest []byte) (idx, n int) {
+	for off := 0; ; {
+		i := bytes.Index(rest[off:], []byte("\n---"))
+		if i < 0 {
+			return -1, 0
+		}
+
+		idx = off + i
+		end := idx + len("\n---")
+
+		for end < len(rest) && (rest[end] == ' ' || rest[end] == '\t') {
+			end++
+		}
+
+		if end == len(rest) || isLineBreak(rest[end]) {
+			return idx, end - idx
+		}
+
+		off = idx + 1
+	}
 }
 
 // isLineBreak reports whether c is a line feed or carriage return.

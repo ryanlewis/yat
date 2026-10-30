@@ -63,12 +63,12 @@ phase: "0"
 			wantID: "SP-001",
 		},
 		{
-			name: "no closing delimiter returns nil",
+			name: "no closing delimiter is an error",
 			input: `---
 id: TK-001
 title: "Unclosed"
 `,
-			wantNil: true,
+			wantErr: true,
 		},
 		{
 			name:   "CRLF line endings",
