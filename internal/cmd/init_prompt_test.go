@@ -351,3 +351,21 @@ func TestPromptDirInteractive_EOF(t *testing.T) {
 		t.Fatalf("err = %v, want reading input: EOF", err)
 	}
 }
+
+func TestPromptDirInteractive_AnswersSentTogether(t *testing.T) {
+	chdirTemp(t)
+	// In real use stdin is os.Stdin, which readline also reads. The directory
+	// and the confirm arrive in one write, as when pasted or piped.
+	fakeStdin(t, "backlog\ny\n")
+
+	var buf bytes.Buffer
+
+	got, err := promptDirInteractive(&buf, os.Stdin)
+	if err != nil {
+		t.Fatalf("promptDirInteractive: %v\noutput:\n%s", err, buf.String())
+	}
+
+	if got != "backlog" {
+		t.Errorf("dir = %q, want backlog", got)
+	}
+}
