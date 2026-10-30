@@ -110,10 +110,8 @@ func rewriteStatus(fm []byte, fieldName, alias string, newStatus Status, path st
 	pairs := topLevelPairs(fm)
 
 	for _, key = range keys {
-		if re := statusFieldRe(key); re.Match(fm) {
-			return re.ReplaceAllFunc(fm, func(m []byte) []byte {
-				return replaceStatusValue(m, re.FindSubmatchIndex(m)[3], newStatus)
-			}), key, nil
+		if matches := keyLineMatches(fm, statusFieldRe(key), pairs, key); len(matches) > 0 {
+			return replaceMatches(fm, matches, newStatus), key, nil
 		}
 
 		// A key the line pattern misses, such as "st\x61tus" or "? status",
@@ -140,6 +138,53 @@ func rewriteStatus(fm []byte, fieldName, alias string, newStatus Status, path st
 	}
 
 	return nil, "", fmt.Errorf("no %s or %s field found in frontmatter of %s", fieldName, alias, path)
+}
+
+// keyLineMatches returns the submatch indexes of the re matches that start at
+// a top-level key named key. A line inside another key's multi-line quoted
+// value can also match re, and must not be rewritten. When fm does not parse
+// (pairs is nil), every match is returned.
+func keyLineMatches(fm []byte, re *regexp.Regexp, pairs []*yaml.Node, key string) [][]int {
+	matches := re.FindAllSubmatchIndex(fm, -1)
+	if pairs == nil {
+		return matches
+	}
+
+	starts := make(map[int]bool)
+
+	for i := 0; i+1 < len(pairs); i += 2 {
+		if pairs[i].Kind != yaml.ScalarNode || pairs[i].Value != key {
+			continue
+		}
+
+		if start, ok := nodeOffset(fm, pairs[i].Line, pairs[i].Column); ok {
+			starts[start] = true
+		}
+	}
+
+	keyLines := matches[:0]
+
+	for _, m := range matches {
+		if starts[m[0]] {
+			keyLines = append(keyLines, m)
+		}
+	}
+
+	return keyLines
+}
+
+// replaceMatches returns fm with each status match in matches rewritten to newStatus.
+func replaceMatches(fm []byte, matches [][]int, newStatus Status) []byte {
+	out := make([]byte, 0, len(fm))
+	prev := 0
+
+	for _, m := range matches {
+		out = append(out, fm[prev:m[0]]...)
+		out = append(out, replaceStatusValue(fm[m[0]:m[1]], m[3]-m[0], newStatus)...)
+		prev = m[1]
+	}
+
+	return append(out, fm[prev:]...)
 }
 
 // topLevelPairs returns the keys and values of the mapping fm holds, in turn, or
