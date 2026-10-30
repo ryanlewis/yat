@@ -291,6 +291,19 @@ func (g *Graph) ReadyAll() []*item.Item {
 }
 
 func (g *Graph) readyItems(includeActive bool) []*item.Item {
+	ready := g.readyCandidates(includeActive)
+	if len(ready) <= 1 {
+		return ready
+	}
+
+	g.sortReady(ready)
+
+	return ready
+}
+
+// readyCandidates returns the non-done items whose dependencies are all done,
+// leaving out active items unless includeActive is set.
+func (g *Graph) readyCandidates(includeActive bool) []*item.Item {
 	var ready []*item.Item
 
 	for _, i := range g.items {
@@ -307,54 +320,69 @@ func (g *Graph) readyItems(includeActive bool) []*item.Item {
 		}
 	}
 
-	if len(ready) <= 1 {
-		return ready
-	}
+	return ready
+}
 
+// readyKey holds the sort keys for one ready item, computed once per item
+// rather than on every comparison.
+type readyKey struct {
+	item     *item.Item
+	phase    int
+	priority int
+	depth    int
+	unblocks int
+}
+
+// sortReady sorts ready items in place by phase match, priority, critical
+// path depth (descending), unblock impact (descending), then ID.
+func (g *Graph) sortReady(ready []*item.Item) {
 	activePhase := g.ActivePhase()
 	depths := g.criticalDepthMap()
 
-	unblockCounts := make(map[string]int, len(ready))
-	for _, i := range ready {
-		unblockCounts[i.ID] = len(g.UnblockedBy(i.ID))
+	keys := make([]readyKey, len(ready))
+	for n, i := range ready {
+		keys[n] = readyKey{
+			item:     i,
+			phase:    phaseRank(i.Phase, activePhase),
+			priority: item.PriorityRank(i.Priority),
+			depth:    depths[i.ID],
+			unblocks: len(g.UnblockedBy(i.ID)),
+		}
 	}
 
-	sort.Slice(ready, func(a, b int) bool {
-		ia, ib := ready[a], ready[b]
-
-		// 1. Phase match (active phase first, no phase neutral, wrong phase last)
-		pa := phaseRank(ia.Phase, activePhase)
-		pb := phaseRank(ib.Phase, activePhase)
-		if pa != pb {
-			return pa < pb
-		}
-
-		// 2. Priority
-		pra := item.PriorityRank(ia.Priority)
-		prb := item.PriorityRank(ib.Priority)
-		if pra != prb {
-			return pra < prb
-		}
-
-		// 3. Critical path depth (deeper chain = more important)
-		da := depths[ia.ID]
-		db := depths[ib.ID]
-		if da != db {
-			return da > db
-		}
-
-		// 4. Unblock impact (more immediate unblocks = more important)
-		ua := unblockCounts[ia.ID]
-		ub := unblockCounts[ib.ID]
-		if ua != ub {
-			return ua > ub
-		}
-
-		// 5. ID tiebreaker
-		return ia.ID < ib.ID
+	sort.Slice(keys, func(a, b int) bool {
+		return readyLess(keys[a], keys[b])
 	})
 
-	return ready
+	for n, k := range keys {
+		ready[n] = k.item
+	}
+}
+
+// readyLess reports whether a sorts before b.
+func readyLess(a, b readyKey) bool {
+	// 1. Phase match (active phase first, no phase neutral, wrong phase last)
+	if a.phase != b.phase {
+		return a.phase < b.phase
+	}
+
+	// 2. Priority
+	if a.priority != b.priority {
+		return a.priority < b.priority
+	}
+
+	// 3. Critical path depth (deeper chain = more important)
+	if a.depth != b.depth {
+		return a.depth > b.depth
+	}
+
+	// 4. Unblock impact (more immediate unblocks = more important)
+	if a.unblocks != b.unblocks {
+		return a.unblocks > b.unblocks
+	}
+
+	// 5. ID tiebreaker
+	return a.item.ID < b.item.ID
 }
 
 // phaseRank returns a sort rank for an item's phase relative to the active phase.
