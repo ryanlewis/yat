@@ -556,9 +556,11 @@ func aliasTargets(aliases map[string]string) map[string]bool {
 func renameKey(key *yaml.Node, name string) *yaml.Node {
 	if key.Kind == yaml.AliasNode {
 		// Renaming an alias would point it at another anchor.
-		key = &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str"}
+		key = &yaml.Node{Kind: yaml.ScalarNode}
 	}
 
+	// The new name is a string, whatever the old key was (~, 5, true).
+	key.Tag = "!!str"
 	key.Value = name
 
 	return key
