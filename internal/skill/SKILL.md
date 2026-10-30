@@ -53,6 +53,7 @@ Always pass `--json` when you parse output. The shapes you will use most:
 - `yat complete <id> --json` — `{"id", "title", "unblocked": [{"id", "title"}], "still_blocked": [{"id", "title", "waiting_on"}]}`.
 - `yat blocked --json` — `[{"id", "title", "waiting_on": [ids]}]`.
 - `yat graph --json` — `{"layers": [[ids]], "edges": [{"from", "to"}]}`.
+- `yat init --json` — `{"config_file", "dir", "created", "sample_item", "agent_files", "skipped_agent_files"}`; the last three appear only when set. Its questions and plan go to stderr, so stdout holds only this object; if the plan is declined, stdout is empty.
 
 Errors are not JSON: they print `error: <message>` to stderr and exit 1, with or without `--json`. Branch on the exit status.
 

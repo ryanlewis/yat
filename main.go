@@ -51,7 +51,7 @@ func execute(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	}
 
 	if ctx.Command() == "init" || ctx.Command() == "init <dir>" {
-		return report(stderr, c.Init.Run(c.JSON, stdout, stdin))
+		return report(stderr, c.Init.Run(c.JSON, stdout, stderr, stdin))
 	}
 
 	// agents and skill need no project, so they run before config loading.
