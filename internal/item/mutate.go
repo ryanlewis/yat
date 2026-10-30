@@ -417,11 +417,12 @@ func statusFieldRe(fieldName string) *regexp.Regexp {
 		`[^\r\n]*(?:\r?\n[ \t]+[^\s#][^\r\n]*)?`)
 }
 
-// createTemp and renameFile are os.CreateTemp and os.Rename, swapped in tests to
-// make them fail on demand.
+// createTemp, renameFile and openInPlace are os.CreateTemp, os.Rename and
+// os.OpenFile, swapped in tests to make them fail on demand.
 var (
-	createTemp = os.CreateTemp
-	renameFile = os.Rename
+	createTemp  = os.CreateTemp
+	renameFile  = os.Rename
+	openInPlace = os.OpenFile
 )
 
 // writeFileAtomic replaces the file at path with data, so a crash or a full disk
@@ -445,7 +446,7 @@ func writeFileAtomic(path string, data []byte) error {
 	tmp, err := createTemp(dir, ".yat-*.tmp")
 	if err != nil {
 		if canWriteInPlace(err) {
-			return os.WriteFile(path, data, info.Mode().Perm())
+			return writeInPlace(path, data, info.Mode().Perm())
 		}
 
 		return err
@@ -462,7 +463,7 @@ func writeFileAtomic(path string, data []byte) error {
 		_ = os.Remove(tmp.Name())
 
 		if canWriteInPlace(err) {
-			return os.WriteFile(path, data, info.Mode().Perm())
+			return writeInPlace(path, data, info.Mode().Perm())
 		}
 
 		return err
@@ -471,6 +472,21 @@ func writeFileAtomic(path string, data []byte) error {
 	syncDir(dir)
 
 	return nil
+}
+
+// writeInPlace writes data over the file at path.
+func writeInPlace(path string, data []byte, perm fs.FileMode) error {
+	f, err := openInPlace(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, perm)
+	if err != nil {
+		return err
+	}
+
+	_, err = f.Write(data)
+	if err1 := f.Close(); err1 != nil && err == nil {
+		err = err1
+	}
+
+	return err
 }
 
 // writableInfo returns the file info of the file at path, refusing a file the
