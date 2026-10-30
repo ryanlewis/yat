@@ -16,9 +16,26 @@ import (
 const testItemID = "TK-001"
 
 // TestMain builds the yat binary once before all e2e tests.
+//
+// When YAT_E2E_COVERDIR is set, the binary is built with coverage
+// instrumentation and every run writes its counters there (via GOCOVERDIR),
+// so `make test` can count main.go, which only the e2e tests exercise.
 func TestMain(m *testing.M) {
-	if err := exec.Command("go", "build", "-o", "yat_test_bin", ".").Run(); err != nil {
-		panic("failed to build yat binary: " + err.Error())
+	build := []string{"build", "-o", "yat_test_bin"}
+	if dir := os.Getenv("YAT_E2E_COVERDIR"); dir != "" {
+		abs, err := filepath.Abs(dir)
+		if err != nil {
+			panic("failed to resolve YAT_E2E_COVERDIR: " + err.Error())
+		}
+		if err := os.MkdirAll(abs, 0o755); err != nil {
+			panic("failed to create YAT_E2E_COVERDIR: " + err.Error())
+		}
+		// Subprocesses inherit the environment, so this reaches every run.
+		os.Setenv("GOCOVERDIR", abs)
+		build = append(build, "-cover", "-covermode=atomic", "-coverpkg=./...")
+	}
+	if out, err := exec.Command("go", append(build, ".")...).CombinedOutput(); err != nil {
+		panic("failed to build yat binary: " + err.Error() + "\n" + string(out))
 	}
 	abs, err := filepath.Abs("yat_test_bin")
 	if err != nil {
