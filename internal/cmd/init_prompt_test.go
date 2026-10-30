@@ -370,7 +370,7 @@ func TestPromptDirInteractive_AnswersSentTogether(t *testing.T) {
 	chdirTemp(t)
 	// In real use stdin is os.Stdin, which readline also reads. The directory
 	// and the confirm arrive in one write, as when pasted or piped.
-	fakeStdin(t, "backlog\ny\n")
+	fakeStdin(t, "inbox\ny\n")
 
 	var buf bytes.Buffer
 
@@ -379,7 +379,24 @@ func TestPromptDirInteractive_AnswersSentTogether(t *testing.T) {
 		t.Fatalf("promptDirInteractive: %v\noutput:\n%s", err, buf.String())
 	}
 
-	if got != "backlog" {
-		t.Errorf("dir = %q, want backlog", got)
+	if got != "inbox" {
+		t.Errorf("dir = %q, want inbox", got)
+	}
+}
+
+func TestPromptDirInteractive_ConfirmHasNoHistory(t *testing.T) {
+	chdirTemp(t)
+	// Up arrow at "Use this path?" must not recall the directory typed before.
+	fakeStdin(t, "later\n\x1b[A\n")
+
+	var buf bytes.Buffer
+
+	got, err := runPromptDir(t, &buf, os.Stdin)
+	if err != nil {
+		t.Fatalf("promptDirInteractive: %v\noutput:\n%s", err, buf.String())
+	}
+
+	if got != "later" {
+		t.Errorf("dir = %q, want later", got)
 	}
 }
