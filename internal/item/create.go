@@ -46,19 +46,26 @@ func CreateFile(path string, data []byte, perm fs.FileMode) error {
 		return nil
 	case errors.Is(err, fs.ErrExist):
 		return fmt.Errorf("%w: %s", ErrFileExists, path)
-	case linkUnsupported(err):
-		// The filesystem does not support hard links; write the file directly.
-		return createExclusive(path, data, perm)
-	default:
+	case retryPointless(err):
 		return err // an *os.LinkError, naming both paths
+	default:
+		// The filesystem may not support hard links; write the file directly.
+		return createExclusive(path, data, perm)
 	}
 }
 
-// linkUnsupported reports whether a link error means the filesystem has no hard
-// links (FAT, exFAT, some FUSE and SMB mounts), rather than a real failure such
-// as a full disk, which a direct write would only hit again, without atomicity.
-func linkUnsupported(err error) bool {
-	return errors.Is(err, errors.ErrUnsupported) || errors.Is(err, syscall.EPERM)
+// retryPointless reports whether a link error means the disk itself is failing
+// (full, over quota, read-only or erroring), so a direct write would only hit
+// it again, this time without atomicity. Filesystems without hard links fail
+// in many other ways (EPERM, EACCES, EINVAL, ENOSYS), and those fall back.
+func retryPointless(err error) bool {
+	for _, errno := range []syscall.Errno{syscall.ENOSPC, syscall.EDQUOT, syscall.EIO, syscall.EROFS} {
+		if errors.Is(err, errno) {
+			return true
+		}
+	}
+
+	return false
 }
 
 // writeNew writes data to f, gives it mode perm, syncs it to disk and closes it.
