@@ -158,11 +158,22 @@ func rewriteStatus(fm []byte, fieldName, alias string, newStatus Status, path st
 // -1 where it has none.
 func keyOffsets(fm []byte, pairs []*yaml.Node) []int {
 	offsets := make([]int, 0, len(pairs)/2)
+	// Keys come in document order, so each line scan resumes where the last ended.
+	lineStart, line := 0, 1
 
 	for i := 0; i+1 < len(pairs); i += 2 {
-		off, ok := nodeOffset(fm, pairs[i].Line, pairs[i].Column)
-		if !ok {
-			off = -1
+		key := pairs[i]
+		off := -1
+
+		if key.Line < line {
+			if o, ok := nodeOffset(fm, key.Line, key.Column); ok {
+				off = o
+			}
+		} else if start, ok := advanceLines(fm, lineStart, key.Line-line); ok {
+			lineStart, line = start, key.Line
+			if o, ok := advanceColumns(fm, start, key.Column-1); ok {
+				off = o
+			}
 		}
 
 		offsets = append(offsets, off)
@@ -335,9 +346,18 @@ func fillEmptyValue(fm []byte, start int, line []byte, newStatus Status) ([]byte
 // nodeOffset returns the byte offset in src of a yaml.Node's 1-based line and
 // column, counting line breaks and characters as the YAML parser does.
 func nodeOffset(src []byte, line, column int) (int, bool) {
-	off := 0
+	off, ok := advanceLines(src, 0, line-1)
+	if !ok {
+		return 0, false
+	}
 
-	for ; line > 1; line-- {
+	return advanceColumns(src, off, column-1)
+}
+
+// advanceLines returns the offset reached from off after skipping lines line
+// breaks.
+func advanceLines(src []byte, off, lines int) (int, bool) {
+	for ; lines > 0; lines-- {
 		for {
 			if off >= len(src) {
 				return 0, false
@@ -354,7 +374,13 @@ func nodeOffset(src []byte, line, column int) (int, bool) {
 		}
 	}
 
-	for ; column > 1; column-- {
+	return off, true
+}
+
+// advanceColumns returns the offset reached from off after skipping columns
+// characters, none of them a line break.
+func advanceColumns(src []byte, off, columns int) (int, bool) {
+	for ; columns > 0; columns-- {
 		if off >= len(src) || lineBreakLen(src[off:]) > 0 {
 			return 0, false
 		}
