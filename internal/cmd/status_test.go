@@ -135,11 +135,3 @@ func TestFormatTypeCounts_Untyped(t *testing.T) {
 		t.Errorf("got %q, want %q", got, want)
 	}
 }
-
-func TestFormatTypeCounts_CaseInsensitive(t *testing.T) {
-	got := formatTypeCounts(map[string]int{"Task": 1, "task": 1, "EPIC": 1, "Epic": 2})
-	want := []string{"2 tasks", "3 epics"}
-	if strings.Join(got, "|") != strings.Join(want, "|") {
-		t.Errorf("got %q, want %q", got, want)
-	}
-}

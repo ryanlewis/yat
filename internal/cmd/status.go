@@ -236,20 +236,20 @@ func typeCount(t string, c int) string {
 	case t == "":
 		return fmt.Sprintf("%d untyped", c)
 	case c == 1:
-		return fmt.Sprintf("%d %s", c, t)
+		return fmt.Sprintf("%d %s", c, strings.ToLower(t))
 	default:
 		return fmt.Sprintf("%d %s", c, pluralizeType(t))
 	}
 }
 
 func formatTypeCounts(byType map[string]int) []string {
-	order := []string{"spike", "task", "story"}
+	order := []string{"Spike", "Task", "Story"}
 
-	// Clean the names first so types that differ only in case, line breaks or
+	// Clean the names first so types that differ only in line breaks or
 	// control characters count together.
 	cleaned := make(map[string]int, len(byType))
 	for t, c := range byType {
-		cleaned[strings.ToLower(strings.TrimSpace(oneLine(t)))] += c
+		cleaned[strings.TrimSpace(oneLine(t))] += c
 	}
 
 	var parts []string
