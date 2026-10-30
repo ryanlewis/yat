@@ -1,9 +1,11 @@
 package skill
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
 )
 
@@ -429,6 +431,63 @@ func TestInstallRefusesOtherSymlinks(t *testing.T) {
 			}
 			if content != "" && string(data) != content {
 				t.Errorf("link target changed: %q", data)
+			}
+		})
+	}
+}
+
+// nestedAgent installs a file below a subdirectory, which no registered agent
+// does yet but Install supports.
+type nestedAgent struct{}
+
+func (nestedAgent) Name() string                { return "nested" }
+func (nestedAgent) DefaultDir() (string, error) { return "", nil }
+func (nestedAgent) Files() map[string][]byte {
+	return map[string][]byte{filepath.Join("sub", skillFileName): []byte(Render())}
+}
+
+func TestInstallNestedFile(t *testing.T) {
+	dir := t.TempDir()
+	if err := Install(nestedAgent{}, dir); err != nil {
+		t.Fatalf("Install: %v", err)
+	}
+	data, err := os.ReadFile(filepath.Join(dir, "sub", skillFileName))
+	if err != nil || string(data) != Render() {
+		t.Errorf("nested file = %q, %v", data, err)
+	}
+}
+
+func TestInstallErrors(t *testing.T) {
+	cases := map[string]struct {
+		agent Agent
+		setup func(t *testing.T, dir string) string // returns the install dir
+		want  error
+	}{
+		"dir under a regular file": {claudeAgent{}, func(t *testing.T, dir string) string {
+			blocker := filepath.Join(dir, "file")
+			if err := os.WriteFile(blocker, nil, 0o600); err != nil {
+				t.Fatal(err)
+			}
+			return filepath.Join(blocker, "skills", Name)
+		}, syscall.ENOTDIR},
+		"file subdir is a regular file": {nestedAgent{}, func(t *testing.T, dir string) string {
+			if err := os.WriteFile(filepath.Join(dir, "sub"), nil, 0o600); err != nil {
+				t.Fatal(err)
+			}
+			return dir
+		}, syscall.ENOTDIR},
+		"skill file is a directory": {claudeAgent{}, func(t *testing.T, dir string) string {
+			if err := os.Mkdir(filepath.Join(dir, skillFileName), 0o750); err != nil {
+				t.Fatal(err)
+			}
+			return dir
+		}, syscall.EISDIR},
+	}
+	for label, tc := range cases {
+		t.Run(label, func(t *testing.T) {
+			dir := tc.setup(t, t.TempDir())
+			if err := Install(tc.agent, dir); !errors.Is(err, tc.want) {
+				t.Fatalf("Install err = %v, want %v", err, tc.want)
 			}
 		})
 	}

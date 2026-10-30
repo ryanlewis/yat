@@ -3,6 +3,8 @@ package cmd
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -332,5 +334,212 @@ func TestSkillInstall_ForeignFileRefusedEvenWithYes(t *testing.T) {
 	}
 	if got := skillFile(t, dir); got != foreign {
 		t.Error("foreign SKILL.md was overwritten")
+	}
+}
+
+// clearSkillHome unsets $HOME and every agent config variable, so no agent
+// default dir resolves into the real home directory.
+func clearSkillHome(t *testing.T) {
+	t.Helper()
+	for _, env := range []string{"HOME", "CLAUDE_CONFIG_DIR", "CODEX_HOME", "PI_CODING_AGENT_DIR"} {
+		t.Setenv(env, "")
+	}
+}
+
+// setupMixedSkillList leaves claude installed, codex not installed and pi
+// unresolvable, so one list run reaches every row kind.
+func setupMixedSkillList(t *testing.T) (claudeDir, codexDir string) {
+	t.Helper()
+	clearSkillHome(t)
+	claudeBase, codexBase := t.TempDir(), t.TempDir()
+	t.Setenv("CLAUDE_CONFIG_DIR", claudeBase)
+	t.Setenv("CODEX_HOME", codexBase)
+
+	claudeDir = filepath.Join(claudeBase, "skills", "yat")
+	os.MkdirAll(claudeDir, 0o750)
+	os.WriteFile(filepath.Join(claudeDir, "SKILL.md"), []byte(oldSkill), 0o600)
+
+	return claudeDir, filepath.Join(codexBase, "skills", "yat")
+}
+
+func TestSkillList_Text(t *testing.T) {
+	claudeDir, codexDir := setupMixedSkillList(t)
+	env, stdout, _ := newSkillEnv(false, false, "")
+
+	if err := (&SkillListCmd{}).Run(env); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+
+	want := "claude   " + claudeDir + "  (installed)\n" +
+		"codex    " + codexDir + "  (not installed)\n" +
+		"pi       (path unresolved: cannot locate the skill directory: " +
+		"neither $PI_CODING_AGENT_DIR nor $HOME is set)\n" +
+		"\nInstall with: yat skill install <agent>  (agents: claude, codex, pi)\n"
+	if got := stdout.String(); got != want {
+		t.Errorf("output:\n%s\nwant:\n%s", got, want)
+	}
+}
+
+func TestSkillList_JSONUnresolvedDir(t *testing.T) {
+	setupMixedSkillList(t)
+	env, stdout, _ := newSkillEnv(true, false, "")
+
+	if err := (&SkillListCmd{}).Run(env); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+
+	var rows []map[string]any
+	if err := json.Unmarshal(stdout.Bytes(), &rows); err != nil {
+		t.Fatalf("JSON: %v\n%s", err, stdout)
+	}
+	if len(rows) != 3 {
+		t.Fatalf("got %d rows, want 3", len(rows))
+	}
+	pi := rows[2]
+	if _, ok := pi["dir"]; ok {
+		t.Errorf("unresolved row should omit dir: %v", pi)
+	}
+	if pi["agent"] != "pi" || pi["installed"] != false ||
+		!strings.Contains(fmt.Sprint(pi["error"]), "$PI_CODING_AGENT_DIR") {
+		t.Errorf("unexpected pi row: %v", pi)
+	}
+	if _, ok := rows[1]["error"]; ok {
+		t.Errorf("resolved row should omit error: %v", rows[1])
+	}
+}
+
+func TestSkillInstall_DefaultDirUnresolved(t *testing.T) {
+	clearSkillHome(t)
+	env, _, _ := newSkillEnv(false, false, "")
+
+	err := (&SkillInstallCmd{Agent: testAgentCodex}).Run(env)
+	if err == nil || !strings.Contains(err.Error(), "neither $CODEX_HOME nor $HOME is set") {
+		t.Fatalf("expected unresolved dir error, got %v", err)
+	}
+}
+
+func TestSkillInstall_PromptEOFDeclines(t *testing.T) {
+	dir := t.TempDir()
+	os.WriteFile(filepath.Join(dir, "SKILL.md"), []byte(oldSkill), 0o600)
+	env, stdout, _ := newSkillEnv(false, true, "")
+
+	if err := (&SkillInstallCmd{Agent: testAgentClaude, Path: dir}).Run(env); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if stdout.String() != "Aborted.\n" {
+		t.Errorf("unexpected output: %q", stdout)
+	}
+	if got := skillFile(t, dir); got != oldSkill {
+		t.Error("closed stdin still overwrote the install")
+	}
+}
+
+func TestSkillInstall_WriteError(t *testing.T) {
+	dir := t.TempDir()
+	os.Mkdir(filepath.Join(dir, "SKILL.md"), 0o750)
+	env, stdout, _ := newSkillEnv(true, false, "")
+
+	if err := (&SkillInstallCmd{Agent: testAgentClaude, Path: dir}).Run(env); err == nil {
+		t.Fatal("expected an error writing over a directory")
+	}
+	if stdout.Len() != 0 {
+		t.Errorf("failed install should print nothing, got: %s", stdout)
+	}
+}
+
+func TestSkillUninstall_UnknownAgent(t *testing.T) {
+	env, _, _ := newSkillEnv(false, false, "")
+	err := (&SkillUninstallCmd{Agent: "bogus", Path: t.TempDir(), Yes: true}).Run(env)
+	if err == nil || !strings.Contains(err.Error(), `unknown agent "bogus"`) {
+		t.Fatalf("expected unknown agent error, got %v", err)
+	}
+}
+
+func TestSkillUninstall_PromptDeclined(t *testing.T) {
+	dir := t.TempDir()
+	os.WriteFile(filepath.Join(dir, "SKILL.md"), []byte(oldSkill), 0o600)
+	env, stdout, stderr := newSkillEnv(false, true, "n\n")
+
+	if err := (&SkillUninstallCmd{Agent: testAgentClaude, Path: dir}).Run(env); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if !strings.Contains(stderr.String(), "Remove claude skill at "+dir+"? [y/N]: ") {
+		t.Errorf("expected removal prompt, got: %s", stderr)
+	}
+	if stdout.String() != "Aborted.\n" {
+		t.Errorf("unexpected output: %q", stdout)
+	}
+	if got := skillFile(t, dir); got != oldSkill {
+		t.Error("declined prompt still removed the install")
+	}
+}
+
+func TestSkillUninstall_JSONNeverPrompts(t *testing.T) {
+	dir := t.TempDir()
+	os.WriteFile(filepath.Join(dir, "SKILL.md"), []byte(oldSkill), 0o600)
+	env, stdout, stderr := newSkillEnv(true, true, "y\n")
+
+	err := (&SkillUninstallCmd{Agent: testAgentClaude, Path: dir}).Run(env)
+	if err == nil || !strings.Contains(err.Error(), "pass -y to confirm") {
+		t.Fatalf("expected refusal, got %v", err)
+	}
+	if stdout.Len() != 0 || stderr.Len() != 0 {
+		t.Errorf("--json should not prompt, stdout %q stderr %q", stdout, stderr)
+	}
+	skillFile(t, dir)
+}
+
+func TestSkillUninstall_RemoveError(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root ignores directory permissions")
+	}
+	dir := t.TempDir()
+	os.WriteFile(filepath.Join(dir, "SKILL.md"), []byte(oldSkill), 0o600)
+	os.Chmod(dir, 0o500)
+	t.Cleanup(func() { os.Chmod(dir, 0o700) })
+	env, stdout, _ := newSkillEnv(true, false, "")
+
+	err := (&SkillUninstallCmd{Agent: testAgentClaude, Path: dir, Yes: true}).Run(env)
+	if !errors.Is(err, os.ErrPermission) {
+		t.Fatalf("expected permission error, got %v", err)
+	}
+	if stdout.Len() != 0 {
+		t.Errorf("failed uninstall should print nothing, got: %s", stdout)
+	}
+}
+
+func TestSkillShow_JSON(t *testing.T) {
+	env, stdout, _ := newSkillEnv(true, false, "")
+	if err := (&SkillShowCmd{}).Run(env); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+
+	var got skillShowJSON
+	if err := json.Unmarshal(stdout.Bytes(), &got); err != nil {
+		t.Fatalf("JSON: %v\n%s", err, stdout)
+	}
+	if got.Name != skill.Name || got.Description != skill.Description || got.Content != skill.Render() {
+		t.Errorf("unexpected JSON: %+v", got)
+	}
+}
+
+func TestSkillShow_AgentText(t *testing.T) {
+	env, stdout, _ := newSkillEnv(false, false, "")
+	if err := (&SkillShowCmd{Agent: "pi"}).Run(env); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if want := "# SKILL.md\n" + skill.Render(); stdout.String() != want {
+		t.Errorf("output = %q, want %q", stdout, want)
+	}
+}
+
+func TestSkillShow_UnknownAgent(t *testing.T) {
+	env, stdout, _ := newSkillEnv(false, false, "")
+	err := (&SkillShowCmd{Agent: "bogus"}).Run(env)
+	if err == nil || !strings.Contains(err.Error(), `unknown agent "bogus"`) {
+		t.Fatalf("expected unknown agent error, got %v", err)
+	}
+	if stdout.Len() != 0 {
+		t.Errorf("unexpected output: %s", stdout)
 	}
 }
