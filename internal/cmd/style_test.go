@@ -3,6 +3,7 @@ package cmd
 import (
 	"bytes"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -78,8 +79,25 @@ func TestStyles_StatusUsesConfiguredGroups(t *testing.T) {
 }
 
 // ttyStyles returns Styles that take the TTY path of RenderBody while writing
-// to a buffer.
-func ttyStyles() *Styles {
+// to a buffer. glamour.WithAutoStyle inspects the process's os.Stdout, not the
+// writer, and queries the terminal when it is one, so os.Stdout is pointed at a
+// file for the test to keep the chosen style fixed and the test from stalling.
+func ttyStyles(t *testing.T) *Styles {
+	t.Helper()
+
+	f, err := os.Create(filepath.Join(t.TempDir(), "stdout"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	stdout := os.Stdout
+	os.Stdout = f
+
+	t.Cleanup(func() {
+		os.Stdout = stdout
+		_ = f.Close()
+	})
+
 	s := newStyles(&bytes.Buffer{}, defaultStatuses)
 	s.isTTY = true
 
@@ -96,13 +114,13 @@ func TestRenderBody_NotTTYReturnsBodyUnchanged(t *testing.T) {
 }
 
 func TestRenderBody_TTYEmptyBody(t *testing.T) {
-	if got := ttyStyles().RenderBody(""); got != "" {
+	if got := ttyStyles(t).RenderBody(""); got != "" {
 		t.Errorf("RenderBody(\"\") = %q, want empty", got)
 	}
 }
 
 func TestRenderBody_TTYRendersMarkdown(t *testing.T) {
-	s := ttyStyles()
+	s := ttyStyles(t)
 	body := "# Heading\n\nSome **bold** text and a [link](https://example.com).\n\n- first\n- second\n"
 
 	got := s.RenderBody(body)
@@ -121,9 +139,9 @@ func TestRenderBody_TTYRendersMarkdown(t *testing.T) {
 		}
 	}
 
-	// WithAutoStyle picks glamour's plain "notty" style when the test process
-	// has no terminal, which keeps emphasis markers, so only check syntax every
-	// style rewrites.
+	// With os.Stdout not a terminal, WithAutoStyle picks glamour's plain
+	// "notty" style, which keeps emphasis markers, so only check the syntax it
+	// rewrites.
 	if strings.Contains(got, "](") {
 		t.Errorf("rendered body still has markdown link syntax:\n%s", got)
 	}
@@ -136,7 +154,7 @@ func TestRenderBody_TTYRendersMarkdown(t *testing.T) {
 func TestRenderBody_TTYWrapsToDefaultWidth(t *testing.T) {
 	body := strings.Repeat("lorem ipsum dolor ", 40) + "\n"
 
-	got := ttyStyles().RenderBody(body)
+	got := ttyStyles(t).RenderBody(body)
 
 	lines := strings.Split(strings.TrimRight(got, "\n"), "\n")
 	if len(lines) < 2 {
@@ -155,10 +173,14 @@ func TestRenderBody_TTYWrapsToDefaultWidth(t *testing.T) {
 }
 
 func TestRenderBody_TTYReusesRenderer(t *testing.T) {
-	s := ttyStyles()
+	s := ttyStyles(t)
 
 	s.RenderBody("first")
 	first := s.glamourR
+
+	if first == nil {
+		t.Fatal("glamour renderer was not created")
+	}
 
 	s.RenderBody("second")
 
@@ -168,7 +190,7 @@ func TestRenderBody_TTYReusesRenderer(t *testing.T) {
 }
 
 func TestRenderBody_TTYFallsBackWithoutRenderer(t *testing.T) {
-	s := ttyStyles()
+	s := ttyStyles(t)
 	// Use up the one-time setup without creating a renderer, as happens when
 	// glamour.NewTermRenderer fails.
 	s.glamourOnce.Do(func() {})
