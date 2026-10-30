@@ -381,7 +381,7 @@ func TestSkillList_Text(t *testing.T) {
 }
 
 func TestSkillList_JSONUnresolvedDir(t *testing.T) {
-	setupMixedSkillList(t)
+	claudeDir, _ := setupMixedSkillList(t)
 	env, stdout, _ := newSkillEnv(true, false, "")
 
 	if err := (&SkillListCmd{}).Run(env); err != nil {
@@ -394,6 +394,9 @@ func TestSkillList_JSONUnresolvedDir(t *testing.T) {
 	}
 	if len(rows) != 3 {
 		t.Fatalf("got %d rows, want 3", len(rows))
+	}
+	if rows[0]["installed"] != true || rows[0]["dir"] != claudeDir {
+		t.Errorf("unexpected claude row: %v", rows[0])
 	}
 	pi := rows[2]
 	if _, ok := pi["dir"]; ok {
@@ -486,7 +489,9 @@ func TestSkillUninstall_JSONNeverPrompts(t *testing.T) {
 	if stdout.Len() != 0 || stderr.Len() != 0 {
 		t.Errorf("--json should not prompt, stdout %q stderr %q", stdout, stderr)
 	}
-	skillFile(t, dir)
+	if got := skillFile(t, dir); got != oldSkill {
+		t.Error("refused uninstall changed the install")
+	}
 }
 
 func TestSkillUninstall_RemoveError(t *testing.T) {
