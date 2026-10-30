@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
 )
 
@@ -187,5 +188,64 @@ func TestCreateFile_LongFileName(t *testing.T) {
 	data, err := os.ReadFile(path)
 	if err != nil || string(data) != "x" {
 		t.Errorf("got %q, %v; want \"x\"", data, err)
+	}
+}
+
+// failLink makes linkFile fail with errno for the rest of the test.
+func failLink(t *testing.T, errno syscall.Errno) {
+	t.Helper()
+
+	orig := linkFile
+	linkFile = func(oldname, newname string) error {
+		return &os.LinkError{Op: "link", Old: oldname, New: newname, Err: errno}
+	}
+
+	t.Cleanup(func() { linkFile = orig })
+}
+
+func TestCreateFile_LinkErrorReturned(t *testing.T) {
+	for _, errno := range []syscall.Errno{syscall.ENOSPC, syscall.EACCES, syscall.EROFS, syscall.EIO} {
+		t.Run(errno.Error(), func(t *testing.T) {
+			failLink(t, errno)
+
+			dir := t.TempDir()
+			path := filepath.Join(dir, "new.md")
+
+			err := CreateFile(path, []byte("one"), 0o600)
+			if !errors.Is(err, errno) {
+				t.Fatalf("err = %v, want %v", err, errno)
+			}
+
+			if entries, _ := os.ReadDir(dir); len(entries) != 0 {
+				t.Errorf("want dir left empty, got %d entries", len(entries))
+			}
+		})
+	}
+}
+
+func TestCreateFile_LinkUnsupportedFallsBack(t *testing.T) {
+	for _, errno := range []syscall.Errno{syscall.EPERM, syscall.ENOTSUP, syscall.EOPNOTSUPP, syscall.ENOSYS} {
+		t.Run(errno.Error(), func(t *testing.T) {
+			failLink(t, errno)
+
+			dir := t.TempDir()
+			path := filepath.Join(dir, "new.md")
+
+			if err := CreateFile(path, []byte("one"), 0o600); err != nil {
+				t.Fatalf("CreateFile: %v", err)
+			}
+
+			if data, _ := os.ReadFile(path); string(data) != "one" {
+				t.Errorf("file = %q, want %q", data, "one")
+			}
+
+			if entries, _ := os.ReadDir(dir); len(entries) != 1 {
+				t.Errorf("want only new.md left, got %d entries", len(entries))
+			}
+
+			if err := CreateFile(path, []byte("two"), 0o600); !errors.Is(err, ErrFileExists) {
+				t.Errorf("second CreateFile = %v, want ErrFileExists", err)
+			}
+		})
 	}
 }

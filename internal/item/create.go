@@ -11,6 +11,9 @@ import (
 // ErrFileExists is returned by CreateFile when a file is already at the path.
 var ErrFileExists = errors.New("file already exists")
 
+// linkFile is os.Link, swapped in tests to make the link fail on demand.
+var linkFile = os.Link
+
 // CreateFile writes data to a new file at path with mode perm, refusing to
 // replace a file that is already there. Like writeFileAtomic it writes a hidden
 // temp file next to the file first (LoadAll never picks it up), so a crash or a
@@ -33,7 +36,7 @@ func CreateFile(path string, data []byte, perm fs.FileMode) error {
 	}
 
 	// Link, unlike Rename, fails when path exists, so a file is never replaced.
-	err = os.Link(tmpName, path)
+	err = linkFile(tmpName, path)
 
 	switch {
 	case err == nil:
