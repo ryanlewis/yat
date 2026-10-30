@@ -503,6 +503,18 @@ func (d dirAutoCompleter) Do(line []rune, pos int) (candidates [][]rune, length 
 	return dirSuffixes(searchDir, prefix, ""), len([]rune(prefix))
 }
 
+// isDirEntry reports whether e, an entry in dir, is a directory or a symlink
+// that resolves to one.
+func isDirEntry(dir string, e fs.DirEntry) bool {
+	if e.Type()&fs.ModeSymlink == 0 {
+		return e.IsDir()
+	}
+
+	info, err := os.Stat(filepath.Join(dir, e.Name()))
+
+	return err == nil && info.IsDir()
+}
+
 func dirSuffixes(dir, prefix, prepend string) [][]rune {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
@@ -512,7 +524,7 @@ func dirSuffixes(dir, prefix, prepend string) [][]rune {
 	var candidates [][]rune
 
 	for _, e := range entries {
-		if !e.IsDir() || strings.HasPrefix(e.Name(), ".") {
+		if strings.HasPrefix(e.Name(), ".") || !isDirEntry(dir, e) {
 			continue
 		}
 
