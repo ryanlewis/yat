@@ -148,9 +148,19 @@ func TestParse_DelimiterEdgeCases(t *testing.T) {
 			wantNil: true,
 		},
 		{
-			name:    "closing delimiter with trailing spaces",
-			input:   "---\nid: TK-001\nstatus: todo\n--- \n",
-			wantNil: true, // "--- " is not "---" followed by \n/\r/EOF
+			name:   "closing delimiter with trailing spaces",
+			input:  "---\nid: TK-001\nstatus: todo\n--- \n",
+			wantID: "TK-001",
+		},
+		{
+			name:   "closing delimiter with trailing tab and CRLF",
+			input:  "---\r\nid: TK-001\r\n---\t\r\nBody.\r\n",
+			wantID: "TK-001",
+		},
+		{
+			name:   "a line starting with more than --- does not close",
+			input:  "---\nid: TK-001\ntitle: |\n  x\n---- \n---\n",
+			wantID: "TK-001",
 		},
 		{
 			name:   "closing delimiter at exact EOF",
@@ -876,5 +886,41 @@ func TestParseWithOptions_AliasesKeepScalarText(t *testing.T) {
 	}
 	if it.Status != StatusTodo {
 		t.Errorf("Status = %q, want todo", it.Status)
+	}
+}
+
+func TestFrontmatterBounds_ClosingLine(t *testing.T) {
+	tests := []struct {
+		name     string
+		data     string
+		wantFM   string
+		wantBody string
+		wantOK   bool
+	}{
+		{"trailing spaces", "---\na: 1\n---  \nbody", "\na: 1", "body", true},
+		{"trailing tab before CRLF", "---\na: 1\n---\t\r\nbody", "\na: 1", "body", true},
+		{"four dashes skipped", "---\na: 1\n----\n---\nbody", "\na: 1\n----", "body", true},
+		{"text after dashes skipped", "---\na: 1\n---foo\n--- x\n---\nbody", "\na: 1\n---foo\n--- x", "body", true},
+		{"trailing spaces at EOF", "---\na: 1\n--- ", "\na: 1", "", true},
+		{"no line closes", "---\na: 1\n---foo\n", "", "", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			data := []byte(tt.data)
+
+			fmStart, fmEnd, bodyStart, ok := frontmatterBounds(data)
+			if ok != tt.wantOK {
+				t.Fatalf("ok = %v, want %v", ok, tt.wantOK)
+			}
+
+			if !ok {
+				return
+			}
+
+			if fm, body := string(data[fmStart:fmEnd]), string(data[bodyStart:]); fm != tt.wantFM || body != tt.wantBody {
+				t.Errorf("fm, body = %q, %q, want %q, %q", fm, body, tt.wantFM, tt.wantBody)
+			}
+		})
 	}
 }
