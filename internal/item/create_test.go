@@ -1,6 +1,7 @@
 package item
 
 import (
+	"bytes"
 	"errors"
 	"io/fs"
 	"os"
@@ -231,12 +232,13 @@ func TestCreateFile_LinkUnsupportedFallsBack(t *testing.T) {
 			dir := t.TempDir()
 			path := filepath.Join(dir, "new.md")
 
-			if err := CreateFile(path, []byte("one"), 0o600); err != nil {
+			want := []byte("direct write")
+			if err := CreateFile(path, want, 0o600); err != nil {
 				t.Fatalf("CreateFile: %v", err)
 			}
 
-			if data, _ := os.ReadFile(path); string(data) != "one" {
-				t.Errorf("file = %q, want %q", data, "one")
+			if data, _ := os.ReadFile(path); !bytes.Equal(data, want) {
+				t.Errorf("file = %q, want %q", data, want)
 			}
 
 			if entries, _ := os.ReadDir(dir); len(entries) != 1 {

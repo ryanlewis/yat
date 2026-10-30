@@ -6,6 +6,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"syscall"
 )
 
 // ErrFileExists is returned by CreateFile when a file is already at the path.
@@ -45,10 +46,19 @@ func CreateFile(path string, data []byte, perm fs.FileMode) error {
 		return nil
 	case errors.Is(err, fs.ErrExist):
 		return fmt.Errorf("%w: %s", ErrFileExists, path)
-	default:
-		// The filesystem may not support hard links; write the file directly.
+	case linkUnsupported(err):
+		// The filesystem does not support hard links; write the file directly.
 		return createExclusive(path, data, perm)
+	default:
+		return err // an *os.LinkError, naming both paths
 	}
+}
+
+// linkUnsupported reports whether a link error means the filesystem has no hard
+// links (FAT, exFAT, some FUSE and SMB mounts), rather than a real failure such
+// as a full disk, which a direct write would only hit again, without atomicity.
+func linkUnsupported(err error) bool {
+	return errors.Is(err, errors.ErrUnsupported) || errors.Is(err, syscall.EPERM)
 }
 
 // writeNew writes data to f, gives it mode perm, syncs it to disk and closes it.
@@ -68,7 +78,8 @@ func writeNew(f *os.File, data []byte, perm fs.FileMode) error {
 	return f.Close()
 }
 
-// createExclusive writes data to a new file at path, failing if one exists.
+// createExclusive writes data to a new file at path, failing if one exists, and
+// syncs the parent directory so the new entry survives a crash.
 func createExclusive(path string, data []byte, perm fs.FileMode) error {
 	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, perm)
 	if err != nil {
@@ -85,6 +96,8 @@ func createExclusive(path string, data []byte, perm fs.FileMode) error {
 
 		return err
 	}
+
+	syncDir(filepath.Dir(path))
 
 	return nil
 }
