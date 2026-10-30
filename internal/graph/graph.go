@@ -346,7 +346,7 @@ func (g *Graph) sortReady(ready []*item.Item) {
 			phase:    phaseRank(i.Phase, activePhase),
 			priority: item.PriorityRank(i.Priority),
 			depth:    depths[i.ID],
-			unblocks: len(g.UnblockedBy(i.ID)),
+			unblocks: g.countUnblockedBy(i.ID),
 		}
 	}
 
@@ -459,27 +459,8 @@ func (g *Graph) partitionDependents(id string, wantReady bool) []*item.Item {
 	var result []*item.Item
 
 	for _, depID := range g.reverse[id] {
-		dep, ok := g.items[depID]
-		if !ok || g.isDone(dep.Status) {
-			continue
-		}
-
-		allOthersDone := true
-
-		for _, otherDep := range g.forward[depID] {
-			if otherDep == id {
-				continue
-			}
-
-			other, exists := g.items[otherDep]
-			if !exists || !g.isDone(other.Status) {
-				allOthersDone = false
-
-				break
-			}
-		}
-
-		if allOthersDone == wantReady {
+		dep, allOthersDone, ok := g.dependentState(id, depID)
+		if ok && allOthersDone == wantReady {
 			result = append(result, dep)
 		}
 	}
@@ -489,6 +470,41 @@ func (g *Graph) partitionDependents(id string, wantReady bool) []*item.Item {
 	})
 
 	return result
+}
+
+// countUnblockedBy returns len(UnblockedBy(id)) without building or sorting a slice.
+func (g *Graph) countUnblockedBy(id string) int {
+	n := 0
+
+	for _, depID := range g.reverse[id] {
+		if _, allOthersDone, ok := g.dependentState(id, depID); ok && allOthersDone {
+			n++
+		}
+	}
+
+	return n
+}
+
+// dependentState looks up depID, a dependent of id. ok is false when it is missing or done.
+// allOthersDone reports whether every dependency of depID other than id is done.
+func (g *Graph) dependentState(id, depID string) (dep *item.Item, allOthersDone, ok bool) {
+	dep, found := g.items[depID]
+	if !found || g.isDone(dep.Status) {
+		return nil, false, false
+	}
+
+	for _, otherDep := range g.forward[depID] {
+		if otherDep == id {
+			continue
+		}
+
+		other, exists := g.items[otherDep]
+		if !exists || !g.isDone(other.Status) {
+			return dep, false, true
+		}
+	}
+
+	return dep, true, true
 }
 
 // TopologicalLayers returns items grouped into layers using Kahn's algorithm.
