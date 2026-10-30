@@ -8,6 +8,9 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/ryanlewis/yat/internal/item"
 )
 
 // These tests pin the branches of main and newRunContext that the other e2e
@@ -198,6 +201,35 @@ func TestE2E_ReadOnly_ReadCommand(t *testing.T) {
 	}
 	if !strings.Contains(stdout, testItemID) {
 		t.Errorf("expected %s in ready output, got:\n%s", testItemID, stdout)
+	}
+}
+
+// A writer in a read-only project refuses without waiting for the items
+// directory's lock, which another run may hold.
+func TestE2E_ReadOnly_WriterSkipsLock(t *testing.T) {
+	t.Parallel()
+	dir := setupProject(t)
+	writeItem(t, dir, ".yat.yaml", "readonly: true\n")
+
+	unlock, err := item.LockDir(filepath.Join(dir, "spec"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer unlock()
+
+	start := time.Now()
+	stdout, stderr, code := run(t, dir, "start", testItemID)
+	if elapsed := time.Since(start); elapsed > 5*time.Second {
+		t.Errorf("start took %v, want it not to wait for the lock", elapsed)
+	}
+	if code != 1 {
+		t.Errorf("exit code = %d, want 1", code)
+	}
+	if want := "error: project is read-only (readonly: true in .yat.yaml)\n"; stderr != want {
+		t.Errorf("stderr = %q, want %q", stderr, want)
+	}
+	if stdout != "" {
+		t.Errorf("expected empty stdout, got: %s", stdout)
 	}
 }
 
