@@ -87,6 +87,15 @@ func TestPluralizeType(t *testing.T) {
 		{"Task", "tasks"},
 		{"Story", "stories"},
 		{"Spike", "spikes"},
+		{"Fix", "fixes"},
+		{"Bus", "buses"},
+		{"Quiz", "quizes"},
+		{"Patch", "patches"},
+		{"Wish", "wishes"},
+		{"Deploy", "deploys"},
+		{"Cày", "càys"},
+		{"Gày", "gàys"},
+		{"Nùy", "nùys"},
 	}
 
 	for _, tt := range tests {
@@ -94,6 +103,20 @@ func TestPluralizeType(t *testing.T) {
 		if got != tt.want {
 			t.Errorf("pluralizeType(%q) = %q, want %q", tt.input, got, tt.want)
 		}
+	}
+}
+
+func TestStatusCmd_HeaderSingular(t *testing.T) {
+	items := []*item.Item{{ID: "A", Status: item.StatusTodo, Type: "Task", Points: 1}}
+	rc, buf := newTestContext(t, items, false)
+
+	if err := (&StatusCmd{}).Run(rc); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+
+	out := buf.String()
+	if !strings.Contains(out, "1 item: 1 task") {
+		t.Errorf("expected '1 item: 1 task' in output, got:\n%s", out)
 	}
 }
 
