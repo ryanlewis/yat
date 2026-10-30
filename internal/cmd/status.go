@@ -229,24 +229,40 @@ func pluralizeType(t string) string {
 	return lower + "s"
 }
 
-func formatTypeCounts(byType map[string]int) []string {
-	order := []string{"Spike", "Task", "Story"}
+// typeCount renders one type's count in the summary, e.g. "1 spike",
+// "2 spikes", or "2 untyped" for items with no type.
+func typeCount(t string, c int) string {
+	switch {
+	case t == "":
+		return fmt.Sprintf("%d untyped", c)
+	case c == 1:
+		return fmt.Sprintf("%d %s", c, t)
+	default:
+		return fmt.Sprintf("%d %s", c, pluralizeType(t))
+	}
+}
 
-	// Clean the names first so types that differ only in line breaks or
+func formatTypeCounts(byType map[string]int) []string {
+	order := []string{"spike", "task", "story"}
+
+	// Clean the names first so types that differ only in case, line breaks or
 	// control characters count together.
 	cleaned := make(map[string]int, len(byType))
 	for t, c := range byType {
-		cleaned[strings.TrimSpace(oneLine(t))] += c
+		cleaned[strings.ToLower(strings.TrimSpace(oneLine(t)))] += c
 	}
 
 	var parts []string
 
 	for _, t := range order {
 		if c, ok := cleaned[t]; ok {
-			parts = append(parts, fmt.Sprintf("%d %s", c, pluralizeType(t)))
+			parts = append(parts, typeCount(t, c))
 			delete(cleaned, t)
 		}
 	}
+
+	untyped, hasUntyped := cleaned[""]
+	delete(cleaned, "")
 
 	// Include any types not in the standard order, most items first, then by name
 	extra := make([]string, 0, len(cleaned))
@@ -263,7 +279,11 @@ func formatTypeCounts(byType map[string]int) []string {
 	})
 
 	for _, t := range extra {
-		parts = append(parts, fmt.Sprintf("%d %s", cleaned[t], pluralizeType(t)))
+		parts = append(parts, typeCount(t, cleaned[t]))
+	}
+
+	if hasUntyped {
+		parts = append(parts, typeCount("", untyped))
 	}
 
 	return parts
