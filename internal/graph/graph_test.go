@@ -607,3 +607,48 @@ func TestBuild_LongCycle(t *testing.T) {
 		t.Fatal("expected error for cyclic dependency, got nil")
 	}
 }
+
+func TestDependenciesOf(t *testing.T) {
+	items := []*item.Item{
+		{ID: "A", Title: "A", Status: item.StatusTodo},
+		{ID: "B", Title: "B", Status: item.StatusTodo},
+		{ID: "C", Title: "C", Status: item.StatusTodo, Dependencies: []string{"B", "A"}},
+	}
+	g := mustBuild(t, items)
+
+	// Dependencies come back in the order the item lists them.
+	got := g.DependenciesOf("C")
+	if len(got) != 2 || got[0] != "B" || got[1] != "A" {
+		t.Errorf("DependenciesOf(C) = %v, want [B A]", got)
+	}
+
+	// An item with no dependencies gives an empty, non-nil slice.
+	got = g.DependenciesOf("A")
+	if got == nil || len(got) != 0 {
+		t.Errorf("DependenciesOf(A) = %#v, want empty non-nil slice", got)
+	}
+
+	// An unknown ID gives nil.
+	if got := g.DependenciesOf("NOPE-1"); got != nil {
+		t.Errorf("DependenciesOf(NOPE-1) = %#v, want nil", got)
+	}
+}
+
+func TestDependenciesOf_DedupesAndReturnsCopy(t *testing.T) {
+	items := []*item.Item{
+		{ID: "A", Title: "A", Status: item.StatusTodo},
+		{ID: "B", Title: "B", Status: item.StatusTodo, Dependencies: []string{"A", "A"}},
+	}
+	g := mustBuild(t, items)
+
+	got := g.DependenciesOf("B")
+	if len(got) != 1 || got[0] != "A" {
+		t.Fatalf("DependenciesOf(B) = %v, want [A]", got)
+	}
+
+	got[0] = "changed"
+
+	if again := g.DependenciesOf("B"); again[0] != "A" {
+		t.Errorf("mutating the result changed the graph: %v", again)
+	}
+}
