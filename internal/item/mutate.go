@@ -417,6 +417,13 @@ func statusFieldRe(fieldName string) *regexp.Regexp {
 		`[^\r\n]*(?:\r?\n[ \t]+[^\s#][^\r\n]*)?`)
 }
 
+// createTemp and renameFile are os.CreateTemp and os.Rename, swapped in tests to
+// make them fail on demand.
+var (
+	createTemp = os.CreateTemp
+	renameFile = os.Rename
+)
+
 // writeFileAtomic replaces the file at path with data, so a crash or a full disk
 // leaves either the old or the new contents, never a truncated file. It writes a
 // temp file next to the file, syncs it, gives it the file's mode and, where it
@@ -435,7 +442,7 @@ func writeFileAtomic(path string, data []byte) error {
 
 	// The name ends in .tmp, not .md, so LoadAll never picks it up. It leaves out
 	// the item's name, so it fits wherever that name does.
-	tmp, err := os.CreateTemp(dir, ".yat-*.tmp")
+	tmp, err := createTemp(dir, ".yat-*.tmp")
 	if err != nil {
 		if canWriteInPlace(err) {
 			return os.WriteFile(path, data, info.Mode().Perm())
@@ -451,7 +458,7 @@ func writeFileAtomic(path string, data []byte) error {
 		return err
 	}
 
-	if err := os.Rename(tmp.Name(), path); err != nil {
+	if err := renameFile(tmp.Name(), path); err != nil {
 		_ = os.Remove(tmp.Name())
 
 		if canWriteInPlace(err) {
