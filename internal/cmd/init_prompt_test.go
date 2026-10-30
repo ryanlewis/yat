@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"bytes"
+	"io"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -246,6 +247,19 @@ func fakeStdin(t *testing.T, input string) {
 	})
 }
 
+// runPromptDir runs promptDirInteractive and closes the prompter it returns
+// when the test ends.
+func runPromptDir(t *testing.T, stdout io.Writer, stdin io.Reader) (string, error) {
+	t.Helper()
+
+	dir, ask, err := promptDirInteractive(stdout, stdin)
+	if ask != nil {
+		t.Cleanup(ask.close)
+	}
+
+	return dir, err
+}
+
 func TestPromptDirInteractive_ExistingDir(t *testing.T) {
 	dir := chdirTemp(t)
 	mkdirs(t, dir, "work")
@@ -253,7 +267,7 @@ func TestPromptDirInteractive_ExistingDir(t *testing.T) {
 
 	var buf bytes.Buffer
 
-	got, err := promptDirInteractive(&buf, strings.NewReader(""))
+	got, err := runPromptDir(t, &buf, strings.NewReader(""))
 	if err != nil {
 		t.Fatalf("promptDirInteractive: %v", err)
 	}
@@ -274,11 +288,11 @@ func TestPromptDirInteractive_ExistingDir(t *testing.T) {
 
 func TestPromptDirInteractive_DefaultConfirmed(t *testing.T) {
 	chdirTemp(t)
-	fakeStdin(t, "\n")
+	fakeStdin(t, "\ny\n")
 
 	var buf bytes.Buffer
 
-	got, err := promptDirInteractive(&buf, strings.NewReader("y\n"))
+	got, err := runPromptDir(t, &buf, strings.NewReader(""))
 	if err != nil {
 		t.Fatalf("promptDirInteractive: %v", err)
 	}
@@ -297,7 +311,7 @@ func TestPromptDirInteractive_Tilde(t *testing.T) {
 	home := homeFixture(t)
 	fakeStdin(t, "~/docs\n")
 
-	got, err := promptDirInteractive(&bytes.Buffer{}, strings.NewReader(""))
+	got, err := runPromptDir(t, &bytes.Buffer{}, strings.NewReader(""))
 	if err != nil {
 		t.Fatalf("promptDirInteractive: %v", err)
 	}
@@ -310,11 +324,11 @@ func TestPromptDirInteractive_Tilde(t *testing.T) {
 func TestPromptDirInteractive_DeclineThenRetry(t *testing.T) {
 	dir := chdirTemp(t)
 	mkdirs(t, dir, "items")
-	fakeStdin(t, "backlog\nitems\n")
+	fakeStdin(t, "backlog\nn\nitems\n")
 
 	var buf bytes.Buffer
 
-	got, err := promptDirInteractive(&buf, strings.NewReader("n\n"))
+	got, err := runPromptDir(t, &buf, strings.NewReader(""))
 	if err != nil {
 		t.Fatalf("promptDirInteractive: %v", err)
 	}
@@ -332,7 +346,7 @@ func TestPromptDirInteractive_Interrupt(t *testing.T) {
 	chdirTemp(t)
 	fakeStdin(t, "\x03")
 
-	got, err := promptDirInteractive(&bytes.Buffer{}, strings.NewReader(""))
+	got, err := runPromptDir(t, &bytes.Buffer{}, strings.NewReader(""))
 	if err == nil || err.Error() != "interrupted" {
 		t.Fatalf("err = %v, want interrupted", err)
 	}
@@ -346,8 +360,43 @@ func TestPromptDirInteractive_EOF(t *testing.T) {
 	chdirTemp(t)
 	fakeStdin(t, "")
 
-	_, err := promptDirInteractive(&bytes.Buffer{}, strings.NewReader(""))
+	_, err := runPromptDir(t, &bytes.Buffer{}, strings.NewReader(""))
 	if err == nil || err.Error() != "reading input: EOF" {
 		t.Fatalf("err = %v, want reading input: EOF", err)
+	}
+}
+
+func TestPromptDirInteractive_AnswersSentTogether(t *testing.T) {
+	chdirTemp(t)
+	// In real use stdin is os.Stdin, which readline also reads. The directory
+	// and the confirm arrive in one write, as when pasted or piped.
+	fakeStdin(t, "inbox\ny\n")
+
+	var buf bytes.Buffer
+
+	got, err := runPromptDir(t, &buf, os.Stdin)
+	if err != nil {
+		t.Fatalf("promptDirInteractive: %v\noutput:\n%s", err, buf.String())
+	}
+
+	if got != "inbox" {
+		t.Errorf("dir = %q, want inbox", got)
+	}
+}
+
+func TestPromptDirInteractive_ConfirmHasNoHistory(t *testing.T) {
+	chdirTemp(t)
+	// Up arrow at "Use this path?" must not recall the directory typed before.
+	fakeStdin(t, "later\n\x1b[A\n")
+
+	var buf bytes.Buffer
+
+	got, err := runPromptDir(t, &buf, os.Stdin)
+	if err != nil {
+		t.Fatalf("promptDirInteractive: %v\noutput:\n%s", err, buf.String())
+	}
+
+	if got != "later" {
+		t.Errorf("dir = %q, want later", got)
 	}
 }
