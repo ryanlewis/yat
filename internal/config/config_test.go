@@ -3,6 +3,7 @@ package config_test
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/ryanlewis/yat/internal/config"
@@ -782,5 +783,29 @@ func TestStatusGroups_DefaultsAndMembership(t *testing.T) {
 		if got := sg.IsDone(tt.status); got != tt.done {
 			t.Errorf("IsDone(%q) = %v, want %v", tt.status, got, tt.done)
 		}
+	}
+}
+
+func TestLoad_MalformedConfigNamesFile(t *testing.T) {
+	root := t.TempDir()
+	sub := filepath.Join(root, "sub")
+	if err := os.Mkdir(sub, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	path := filepath.Join(root, ".yat.yaml")
+	if err := os.WriteFile(path, []byte("dir: [\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	t.Chdir(sub)
+
+	_, err := config.Load()
+	if err == nil {
+		t.Fatal("expected an error for malformed config")
+	}
+
+	if !strings.Contains(err.Error(), path) {
+		t.Errorf("error %q does not name %s", err, path)
 	}
 }
