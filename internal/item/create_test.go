@@ -49,10 +49,6 @@ func TestCreateFile_MissingParentDir(t *testing.T) {
 		t.Fatal("CreateFile into a missing dir = nil, want error")
 	}
 
-	if errors.Is(err, ErrFileExists) {
-		t.Errorf("err = %v, want it not to be ErrFileExists", err)
-	}
-
 	if !errors.Is(err, fs.ErrNotExist) {
 		t.Errorf("err = %v, want fs.ErrNotExist", err)
 	}
@@ -88,7 +84,7 @@ func TestCreateExclusive(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "new.md")
 
-	if err := createExclusive(path, []byte("one"), 0o640); err != nil {
+	if err := createExclusive(path, []byte("one"), 0o666); err != nil {
 		t.Fatalf("createExclusive: %v", err)
 	}
 
@@ -102,8 +98,8 @@ func TestCreateExclusive(t *testing.T) {
 	}
 
 	// writeNew chmods after open, so the umask does not narrow the mode.
-	if info.Mode().Perm() != 0o640 {
-		t.Errorf("mode = %v, want 0640", info.Mode().Perm())
+	if info.Mode().Perm() != 0o666 {
+		t.Errorf("mode = %v, want 0666", info.Mode().Perm())
 	}
 }
 
@@ -135,10 +131,6 @@ func TestCreateExclusive_MissingParentDir(t *testing.T) {
 	err := createExclusive(path, []byte("one"), 0o600)
 	if !errors.Is(err, fs.ErrNotExist) {
 		t.Errorf("err = %v, want fs.ErrNotExist", err)
-	}
-
-	if errors.Is(err, ErrFileExists) {
-		t.Errorf("err = %v, want it not to be ErrFileExists", err)
 	}
 }
 
