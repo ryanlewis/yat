@@ -49,7 +49,7 @@ func main() {
 	)
 
 	if ctx.Command() == "init" || ctx.Command() == "init <dir>" {
-		if err := c.Init.Run(c.JSON, os.Stdout, os.Stdin); err != nil {
+		if err := c.Init.Run(c.JSON, os.Stdout, os.Stderr, os.Stdin); err != nil {
 			fmt.Fprintf(os.Stderr, "error: %v\n", err)
 			os.Exit(1)
 		}

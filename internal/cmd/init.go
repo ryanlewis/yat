@@ -80,14 +80,21 @@ type initPlan struct {
 	agentFiles   []string
 }
 
-// Run executes the init command. It takes jsonMode, stdout, and stdin directly
-// because it runs before NewRunContext (the items directory may not exist yet).
-func (i *InitCmd) Run(jsonMode bool, stdout io.Writer, stdin io.Reader) error {
+// Run executes the init command. It takes jsonMode, stdout, stderr and stdin
+// directly because it runs before NewRunContext (the items directory may not
+// exist yet). In JSON mode the prompts and plan go to stderr, so stdout holds
+// only the JSON result.
+func (i *InitCmd) Run(jsonMode bool, stdout, stderr io.Writer, stdin io.Reader) error {
 	if existing := existingConfig(); existing != "" {
 		return fmt.Errorf("yat is already initialized (%s exists)", existing)
 	}
 
-	dir, ask, err := i.chooseDir(stdout, stdin)
+	msgs := stdout
+	if jsonMode {
+		msgs = stderr
+	}
+
+	dir, ask, err := i.chooseDir(msgs, stdin)
 	if err != nil {
 		return err
 	}
@@ -97,7 +104,7 @@ func (i *InitCmd) Run(jsonMode bool, stdout io.Writer, stdin io.Reader) error {
 
 	found, skipped := detectAgentFiles()
 	for _, f := range skipped {
-		fmt.Fprintf(stdout, "%s already has yat instructions, skipping.\n", f)
+		fmt.Fprintf(msgs, "%s already has yat instructions, skipping.\n", f)
 	}
 
 	if len(found) > 0 {
@@ -111,9 +118,9 @@ func (i *InitCmd) Run(jsonMode bool, stdout io.Writer, stdin io.Reader) error {
 		}
 	}
 
-	printPlan(stdout, plan)
+	printPlan(msgs, plan)
 
-	fmt.Fprintln(stdout)
+	fmt.Fprintln(msgs)
 
 	ok, err := confirm(ask, "Proceed? [Y/n]: ")
 	if err != nil {
@@ -121,7 +128,7 @@ func (i *InitCmd) Run(jsonMode bool, stdout io.Writer, stdin io.Reader) error {
 	}
 
 	if !ok {
-		fmt.Fprintln(stdout, "Aborted.")
+		fmt.Fprintln(msgs, "Aborted.")
 		return nil
 	}
 
@@ -513,7 +520,11 @@ func promptDirInteractive(stdout io.Writer, stdin io.Reader) (string, prompter, 
 
 	// No history: the confirms share this instance, and the up arrow at one
 	// would fill in a directory name.
-	rl, err := readline.NewFromConfig(&readline.Config{AutoComplete: dirAutoCompleter{}, HistoryLimit: -1})
+	rl, err := readline.NewFromConfig(&readline.Config{
+		AutoComplete: dirAutoCompleter{},
+		HistoryLimit: -1,
+		Stdout:       stdout,
+	})
 	if err != nil {
 		fmt.Fprintf(stdout, "Note: tab completion unavailable (%v)\n", err)
 		scanner := bufio.NewScanner(stdin)

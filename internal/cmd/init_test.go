@@ -41,7 +41,7 @@ func TestInitCmd_Fresh(t *testing.T) {
 	stdin := strings.NewReader("spec\ny\ny\n") // dir prompt, confirm non-existent, proceed
 
 	cmd := &InitCmd{}
-	if err := cmd.Run(false, &buf, stdin); err != nil {
+	if err := cmd.Run(false, &buf, &buf, stdin); err != nil {
 		t.Fatalf("Run: %v", err)
 	}
 
@@ -76,7 +76,7 @@ func TestInitCmd_WithArg(t *testing.T) {
 	stdin := strings.NewReader("y\n")
 
 	cmd := &InitCmd{Dir: "myitems"}
-	if err := cmd.Run(false, &buf, stdin); err != nil {
+	if err := cmd.Run(false, &buf, &buf, stdin); err != nil {
 		t.Fatalf("Run: %v", err)
 	}
 
@@ -108,7 +108,7 @@ func TestInitCmd_ExistingItems(t *testing.T) {
 	stdin := strings.NewReader("y\n")
 
 	cmd := &InitCmd{Dir: "spec"}
-	if err := cmd.Run(false, &buf, stdin); err != nil {
+	if err := cmd.Run(false, &buf, &buf, stdin); err != nil {
 		t.Fatalf("Run: %v", err)
 	}
 
@@ -133,7 +133,7 @@ func TestInitCmd_AlreadyInitialized(t *testing.T) {
 	stdin := strings.NewReader("y\n")
 
 	cmd := &InitCmd{Dir: "spec"}
-	err := cmd.Run(false, &buf, stdin)
+	err := cmd.Run(false, &buf, &buf, stdin)
 	if err == nil {
 		t.Fatal("expected error for already initialized")
 	}
@@ -149,7 +149,7 @@ func TestInitCmd_Declined(t *testing.T) {
 	stdin := strings.NewReader("n\n")
 
 	cmd := &InitCmd{Dir: "spec"}
-	if err := cmd.Run(false, &buf, stdin); err != nil {
+	if err := cmd.Run(false, &buf, &buf, stdin); err != nil {
 		t.Fatalf("Run: %v", err)
 	}
 
@@ -170,7 +170,7 @@ func TestInitCmd_JSON(t *testing.T) {
 	stdin := strings.NewReader("y\n")
 
 	cmd := &InitCmd{Dir: "spec"}
-	if err := cmd.Run(true, &buf, stdin); err != nil {
+	if err := cmd.Run(true, &buf, &buf, stdin); err != nil {
 		t.Fatalf("Run: %v", err)
 	}
 
@@ -210,7 +210,7 @@ func TestInitCmd_EmptyDirGetsSample(t *testing.T) {
 	stdin := strings.NewReader("y\n")
 
 	cmd := &InitCmd{Dir: "spec"}
-	if err := cmd.Run(false, &buf, stdin); err != nil {
+	if err := cmd.Run(false, &buf, &buf, stdin); err != nil {
 		t.Fatalf("Run: %v", err)
 	}
 
@@ -230,7 +230,7 @@ func TestInitCmd_AlreadyInitialized_LocalYaml(t *testing.T) {
 	stdin := strings.NewReader("y\n")
 
 	cmd := &InitCmd{Dir: "spec"}
-	err := cmd.Run(false, &buf, stdin)
+	err := cmd.Run(false, &buf, &buf, stdin)
 	if err == nil {
 		t.Fatal("expected error for already initialized")
 	}
@@ -249,7 +249,7 @@ func TestInitCmd_AgentFiles_ClaudeMD(t *testing.T) {
 	stdin := strings.NewReader("y\ny\n") // accept agent files, accept plan
 
 	cmd := &InitCmd{Dir: "spec"}
-	if err := cmd.Run(false, &buf, stdin); err != nil {
+	if err := cmd.Run(false, &buf, &buf, stdin); err != nil {
 		t.Fatalf("Run: %v", err)
 	}
 
@@ -296,7 +296,7 @@ func TestInitCmd_AgentFiles_AgentsMD(t *testing.T) {
 	stdin := strings.NewReader("y\ny\n") // accept agent files, accept plan
 
 	cmd := &InitCmd{Dir: "spec"}
-	if err := cmd.Run(false, &buf, stdin); err != nil {
+	if err := cmd.Run(false, &buf, &buf, stdin); err != nil {
 		t.Fatalf("Run: %v", err)
 	}
 
@@ -324,7 +324,7 @@ func TestInitCmd_AgentFiles_Both(t *testing.T) {
 	stdin := strings.NewReader("y\ny\n") // accept agent files, accept plan
 
 	cmd := &InitCmd{Dir: "items"}
-	if err := cmd.Run(false, &buf, stdin); err != nil {
+	if err := cmd.Run(false, &buf, &buf, stdin); err != nil {
 		t.Fatalf("Run: %v", err)
 	}
 
@@ -348,7 +348,7 @@ func TestInitCmd_AgentFiles_JSON(t *testing.T) {
 	stdin := strings.NewReader("y\ny\n") // accept agent files, accept plan
 
 	cmd := &InitCmd{Dir: "spec"}
-	if err := cmd.Run(true, &buf, stdin); err != nil {
+	if err := cmd.Run(true, &buf, &buf, stdin); err != nil {
 		t.Fatalf("Run: %v", err)
 	}
 
@@ -378,7 +378,7 @@ func TestInitCmd_AgentFiles_Declined(t *testing.T) {
 	stdin := strings.NewReader("n\ny\n") // decline agent files, accept plan
 
 	cmd := &InitCmd{Dir: "spec"}
-	if err := cmd.Run(false, &buf, stdin); err != nil {
+	if err := cmd.Run(false, &buf, &buf, stdin); err != nil {
 		t.Fatalf("Run: %v", err)
 	}
 
@@ -542,7 +542,7 @@ func TestInitCmd_AgentFiles_SkipsExistingBlock(t *testing.T) {
 			stdin := strings.NewReader("y\ny\n") // accept agent files, accept plan
 
 			cmd := &InitCmd{Dir: "spec"}
-			if err := cmd.Run(false, &buf, stdin); err != nil {
+			if err := cmd.Run(false, &buf, &buf, stdin); err != nil {
 				t.Fatalf("Run: %v", err)
 			}
 
@@ -583,7 +583,7 @@ func TestInitCmd_AgentFiles_AllSkippedNoPrompt(t *testing.T) {
 	stdin := strings.NewReader("y\n") // accept plan; no agent prompt expected
 
 	cmd := &InitCmd{Dir: "spec"}
-	if err := cmd.Run(false, &buf, stdin); err != nil {
+	if err := cmd.Run(false, &buf, &buf, stdin); err != nil {
 		t.Fatalf("Run: %v", err)
 	}
 
@@ -616,7 +616,7 @@ func TestInitCmd_AgentFiles_SymlinkAppendedOnce(t *testing.T) {
 	stdin := strings.NewReader("y\ny\n") // accept agent files, accept plan
 
 	cmd := &InitCmd{Dir: "spec"}
-	if err := cmd.Run(false, &buf, stdin); err != nil {
+	if err := cmd.Run(false, &buf, &buf, stdin); err != nil {
 		t.Fatalf("Run: %v", err)
 	}
 
@@ -642,7 +642,7 @@ func TestInitCmd_AgentFiles_UnreadableStillOffered(t *testing.T) {
 	stdin := strings.NewReader("y\ny\n") // accept agent files, accept plan
 
 	cmd := &InitCmd{Dir: "spec"}
-	if err := cmd.Run(false, &buf, stdin); err != nil {
+	if err := cmd.Run(false, &buf, &buf, stdin); err != nil {
 		t.Fatalf("Run: %v", err)
 	}
 
@@ -660,7 +660,7 @@ func TestInitCmd_AgentFiles_SkippedJSON(t *testing.T) {
 	stdin := strings.NewReader("y\n") // accept plan
 
 	cmd := &InitCmd{Dir: "spec"}
-	if err := cmd.Run(true, &buf, stdin); err != nil {
+	if err := cmd.Run(true, &buf, &buf, stdin); err != nil {
 		t.Fatalf("Run: %v", err)
 	}
 
