@@ -39,11 +39,13 @@ func LoadAllWithOptions(dir string, opts ParseOptions) ([]*Item, []string, error
 		warnSkip(path, err)
 	}
 
-	err := filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
+	root := walkRoot(dir)
+
+	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			// A subdirectory that cannot be read is skipped like an unreadable
 			// file; the root itself still fails the load.
-			if path != dir && d != nil && d.IsDir() {
+			if path != root && d != nil && d.IsDir() {
 				skip(path, unwrapPathErr(err))
 
 				return fs.SkipDir
@@ -76,6 +78,18 @@ func LoadAllWithOptions(dir string, opts ParseOptions) ([]*Item, []string, error
 	}
 
 	return items, skipped, nil
+}
+
+// walkRoot returns dir with a trailing separator, so that WalkDir follows the
+// root when it is a symlink to a directory. Symlinks inside the tree are still
+// not followed. Item paths are unchanged, as WalkDir joins and cleans them.
+// A bare volume name such as C: is left alone, as C:\ names a different directory.
+func walkRoot(dir string) string {
+	if dir == "" || dir == filepath.VolumeName(dir) || os.IsPathSeparator(dir[len(dir)-1]) {
+		return dir
+	}
+
+	return dir + string(filepath.Separator)
 }
 
 // loadFile parses one .md file for LoadAllWithOptions. It returns a nil item
