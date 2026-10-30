@@ -114,8 +114,6 @@ func TestAddCmd_RefusesFileThatWouldNotReadBack(t *testing.T) {
 	}{
 		// title: ignore under the yat key makes yat skip the file.
 		{name: "yat directive", alias: "yat", title: "ignore", file: "TK-007-ignore.md"},
-		// A ~ key decodes as null, so the frontmatter does not parse.
-		{name: "null key", alias: "~", title: "x", file: "TK-007-x.md"},
 	}
 
 	for _, tt := range tests {
@@ -136,5 +134,27 @@ func TestAddCmd_RefusesFileThatWouldNotReadBack(t *testing.T) {
 				t.Errorf("%s was written (stat: %v)", path, err)
 			}
 		})
+	}
+}
+
+// A ~ key decodes as null, but as an alias it reads as the field it stands
+// for, so add writes the file.
+func TestAddCmd_NullAliasKeyReadsBack(t *testing.T) {
+	dir := addTestDir(t)
+	cfg := defaultConfig()
+	cfg.FieldAliases = map[string]string{"title": "~"}
+	rc, _ := newAddContext(t, dir, cfg, false)
+
+	if err := (&AddCmd{Title: "x", Type: "Task", stdin: strings.NewReader("")}).Run(rc); err != nil {
+		t.Fatalf("add: %v", err)
+	}
+
+	data, err := os.ReadFile(filepath.Join(dir, "tasks", "TK-007-x.md"))
+	if err != nil {
+		t.Fatalf("reading the new file: %v", err)
+	}
+
+	if !strings.Contains(string(data), "\n~: x\n") {
+		t.Errorf("new file does not store the title under ~:\n%s", data)
 	}
 }
