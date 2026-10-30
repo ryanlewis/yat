@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -36,28 +37,55 @@ func TestCheckReadsBack(t *testing.T) {
 		data   string
 		change func(*item.Item)
 		ok     bool
+		want   string // what follows the message's colon
 	}{
 		{name: "same fields", data: readBackData, ok: true},
-		{name: "id differs", data: readBackData, change: func(it *item.Item) { it.ID = "TK-009" }},
-		{name: "title differs", data: readBackData, change: func(it *item.Item) { it.Title = "Other" }},
-		{name: "type differs", data: readBackData, change: func(it *item.Item) { it.Type = "Story" }},
-		{name: "priority differs", data: readBackData, change: func(it *item.Item) { it.Priority = item.PriorityLow }},
-		{name: "points differ", data: readBackData, change: func(it *item.Item) { it.Points = 5 }},
-		{name: "status differs", data: readBackData, change: func(it *item.Item) { it.Status = "in-progress" }},
-		{name: "phase differs", data: readBackData, change: func(it *item.Item) { it.Phase = "p2" }},
+		{name: "id differs", data: readBackData, change: func(it *item.Item) { it.ID = "TK-009" }, want: `field "id" differs`},
+		{
+			name: "title differs", data: readBackData, change: func(it *item.Item) { it.Title = "Other" },
+			want: `field "title" differs`,
+		},
+		{
+			name: "type differs", data: readBackData, change: func(it *item.Item) { it.Type = "Story" },
+			want: `field "type" differs`,
+		},
+		{
+			name: "priority differs", data: readBackData, change: func(it *item.Item) { it.Priority = item.PriorityLow },
+			want: `field "priority" differs`,
+		},
+		{
+			name: "points differ", data: readBackData, change: func(it *item.Item) { it.Points = 5 },
+			want: `field "points" differs`,
+		},
+		{
+			name: "status differs", data: readBackData, change: func(it *item.Item) { it.Status = "in-progress" },
+			want: `field "status" differs`,
+		},
+		{
+			name: "phase differs", data: readBackData, change: func(it *item.Item) { it.Phase = "p2" },
+			want: `field "phase" differs`,
+		},
 		{
 			name:   "dependencies in another order",
 			data:   readBackData,
 			change: func(it *item.Item) { it.Dependencies = []string{"TK-006", "TK-002"} },
+			want:   `field "dependencies" differs`,
 		},
 		{
 			name:   "dependency missing",
 			data:   readBackData,
 			change: func(it *item.Item) { it.Dependencies = []string{"TK-002"} },
+			want:   `field "dependencies" differs`,
 		},
-		{name: "no frontmatter", data: "# Title\n"},
-		{name: "ignored", data: strings.Replace(readBackData, "phase: p1\n", "phase: p1\nyat: ignore\n", 1)},
-		{name: "parse error", data: strings.Replace(readBackData, "points: 3", "points: three", 1)},
+		{name: "no frontmatter", data: "# Title\n", want: "yat would skip it"},
+		{
+			name: "ignored", data: strings.Replace(readBackData, "phase: p1\n", "phase: p1\nyat: ignore\n", 1),
+			want: "yat would skip it",
+		},
+		{
+			name: "parse error", data: strings.Replace(readBackData, "points: 3", "points: three", 1),
+			want: "parsing frontmatter in TK-001-title.md",
+		},
 	}
 
 	for _, tt := range tests {
@@ -76,9 +104,14 @@ func TestCheckReadsBack(t *testing.T) {
 				return
 			}
 
-			want := "cannot write TK-001-title.md: it would not read back as written under this project's field_aliases"
-			if err == nil || err.Error() != want {
+			want := "cannot write TK-001-title.md: it would not read back as written under this project's field_aliases: " +
+				tt.want
+			if err == nil || !strings.HasPrefix(err.Error(), want) {
 				t.Errorf("checkReadsBack error = %v, want %q", err, want)
+			}
+
+			if tt.name == "parse error" && errors.Unwrap(err) == nil {
+				t.Errorf("checkReadsBack error %v does not wrap the parse error", err)
 			}
 		})
 	}
@@ -111,9 +144,10 @@ func TestAddCmd_RefusesFileThatWouldNotReadBack(t *testing.T) {
 		alias string
 		title string
 		file  string
+		cause string
 	}{
 		// title: ignore under the yat key makes yat skip the file.
-		{name: "yat directive", alias: "yat", title: "ignore", file: "TK-007-ignore.md"},
+		{name: "yat directive", alias: "yat", title: "ignore", file: "TK-007-ignore.md", cause: "yat would skip it"},
 	}
 
 	for _, tt := range tests {
@@ -128,6 +162,8 @@ func TestAddCmd_RefusesFileThatWouldNotReadBack(t *testing.T) {
 			path := filepath.Join(dir, "tasks", tt.file)
 			if err == nil || !strings.Contains(err.Error(), "cannot write "+path+": it would not read back") {
 				t.Errorf("expected a read-back error for %s, got: %v", path, err)
+			} else if !strings.Contains(err.Error(), tt.cause) {
+				t.Errorf("read-back error %q does not give the cause %q", err, tt.cause)
 			}
 
 			if _, err := os.Stat(path); !os.IsNotExist(err) {
