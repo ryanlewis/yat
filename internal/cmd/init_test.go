@@ -522,6 +522,30 @@ func TestShowDirSuggestions_Empty(t *testing.T) {
 	}
 }
 
+func TestShowDirSuggestions_Symlinks(t *testing.T) {
+	dir := chdirTemp(t)
+
+	os.MkdirAll(filepath.Join(dir, "real"), 0o755)
+	os.WriteFile(filepath.Join(dir, "real", "item.md"), []byte("test"), 0o644)
+	os.WriteFile(filepath.Join(dir, "file.md"), nil, 0o644)
+
+	for name, target := range map[string]string{"linkdir": "real", "linkfile": "file.md", "dangling": "missing"} {
+		if err := os.Symlink(target, filepath.Join(dir, name)); err != nil {
+			t.Skipf("Symlink: %v", err)
+		}
+	}
+
+	var buf bytes.Buffer
+	showDirSuggestions(&buf)
+
+	// A symlink to a directory is listed like the directory, as Tab offers it;
+	// links to files and dangling links are not.
+	want := "Directories: linkdir/ (1 item)  real/ (1 item)\n"
+	if got := buf.String(); got != want {
+		t.Errorf("showDirSuggestions = %q, want %q", got, want)
+	}
+}
+
 func TestInitCmd_AgentFiles_SkipsExistingBlock(t *testing.T) {
 	// A file with the short pointer (current) or the full skill text (older yat)
 	// must not get a second block. Both open with the same heading.
