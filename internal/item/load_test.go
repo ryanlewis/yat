@@ -90,8 +90,7 @@ func TestLoadAll_ReturnsSkippedPaths(t *testing.T) {
 	writeFile(t, filepath.Join(dir, "a.md"), "---\nid: A-1\n---\n")
 	writeFile(t, filepath.Join(dir, "list.md"), "---\n- a\n---\n")
 
-	unclosed := filepath.Join(dir, "unclosed.md")
-	writeFile(t, unclosed, "---\nid: A-2\n")
+	writeFile(t, filepath.Join(dir, "notes.md"), "---\n\nMeeting notes\n")
 
 	broken := filepath.Join(dir, "broken.md")
 	if err := os.Symlink("nowhere.md", broken); err != nil {
@@ -108,8 +107,8 @@ func TestLoadAll_ReturnsSkippedPaths(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Not list.md: it is readable and holds no item. unclosed.md may hold one.
-	want := []string{broken, unclosed}
+	// Not list.md or notes.md: they are readable and hold no item.
+	want := []string{broken}
 	if !slices.Equal(skipped, want) {
 		t.Errorf("skipped = %q, want %q", skipped, want)
 	}

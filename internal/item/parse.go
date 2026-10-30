@@ -42,7 +42,8 @@ var ErrNotMapping = errors.New("frontmatter is not a YAML mapping")
 
 // ParseFile reads a markdown file and extracts the YAML frontmatter into an Item.
 // The body (everything after the closing ---) is stored in Body.
-// Returns nil if the file has no valid frontmatter or no id field.
+// Returns nil if the file has no frontmatter or no id field, and
+// ErrUnclosedFrontmatter (wrapped) if its frontmatter never closes.
 func ParseFile(path string) (*Item, error) {
 	return ParseFileWithOptions(path, ParseOptions{})
 }
@@ -58,7 +59,7 @@ func ParseFileWithOptions(path string, opts ParseOptions) (*Item, error) {
 }
 
 // Parse extracts an Item from raw file bytes.
-// Returns nil (no error) if the file has no valid frontmatter.
+// Returns nil (no error) if the file has no frontmatter.
 // Returns ErrMissingID (wrapped) if frontmatter contains item fields but no id.
 // Returns ErrNotMapping (wrapped) if the frontmatter is YAML but not a mapping.
 // Returns ErrUnclosedFrontmatter (wrapped) if the frontmatter never closes.
