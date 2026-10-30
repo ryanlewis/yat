@@ -12,6 +12,7 @@ make test        # go test -v -race -coverprofile=coverage.out ./...
 make lint        # golangci-lint run
 make coverage    # generate HTML coverage report
 make clean       # remove binary, coverage files
+make crap        # top 20 functions by CRAP score (CRAP_TOP=N for more)
 ```
 
 Run a single test:
@@ -37,6 +38,7 @@ internal/
   skill/             Bundled agent skill (embedded SKILL.md) and per-agent install adapters
     skill.go         Name/Description constants, Render, registry, Install/Uninstall/Exists
     SKILL.md         Skill body, go:embed-ed; also what `yat agents` prints
+  tools/crap/        `make crap` helper: joins gocyclo and cover -func output, ranks by CRAP
   cmd/               One file per command, all implement Run(*RunContext) error
     context.go       RunContext: loads items, builds graph, shared by all commands
 ```
