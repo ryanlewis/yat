@@ -205,7 +205,7 @@ func failLink(t *testing.T, errno syscall.Errno) {
 }
 
 func TestCreateFile_LinkErrorReturned(t *testing.T) {
-	for _, errno := range []syscall.Errno{syscall.ENOSPC, syscall.EACCES, syscall.EROFS, syscall.EIO} {
+	for _, errno := range []syscall.Errno{syscall.ENOSPC, syscall.EDQUOT, syscall.EIO, syscall.EROFS} {
 		t.Run(errno.Error(), func(t *testing.T) {
 			failLink(t, errno)
 
@@ -225,7 +225,11 @@ func TestCreateFile_LinkErrorReturned(t *testing.T) {
 }
 
 func TestCreateFile_LinkUnsupportedFallsBack(t *testing.T) {
-	for _, errno := range []syscall.Errno{syscall.EPERM, syscall.ENOTSUP, syscall.EOPNOTSUPP, syscall.ENOSYS} {
+	fallback := []syscall.Errno{
+		syscall.EPERM, syscall.EACCES, syscall.EINVAL, syscall.ENOTSUP, syscall.EOPNOTSUPP, syscall.ENOSYS, syscall.EXDEV,
+	}
+
+	for _, errno := range fallback {
 		t.Run(errno.Error(), func(t *testing.T) {
 			failLink(t, errno)
 
