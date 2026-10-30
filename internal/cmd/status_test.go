@@ -89,7 +89,7 @@ func TestPluralizeType(t *testing.T) {
 		{"Spike", "spikes"},
 		{"Fix", "fixes"},
 		{"Bus", "buses"},
-		{"Quiz", "quizes"},
+		{"Buzz", "buzzes"},
 		{"Patch", "patches"},
 		{"Wish", "wishes"},
 		{"Deploy", "deploys"},
