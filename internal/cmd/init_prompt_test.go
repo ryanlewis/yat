@@ -213,6 +213,36 @@ func TestDirSuffixes_UnreadableDir(t *testing.T) {
 	}
 }
 
+func TestDirSuffixes_Symlinks(t *testing.T) {
+	root := t.TempDir()
+	mkdirs(t, root, "real")
+
+	if err := os.WriteFile(filepath.Join(root, "file.md"), nil, 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	links := map[string]string{
+		"linkdir":  "real",
+		"linkfile": "file.md",
+		"dangling": "missing",
+		".hidden":  "real",
+	}
+	for name, target := range links {
+		if err := os.Symlink(target, filepath.Join(root, name)); err != nil {
+			t.Skipf("Symlink: %v", err)
+		}
+	}
+
+	// A symlink to a directory is offered; links to files, dangling links and
+	// hidden links are not.
+	got := dirSuffixes(root, "", "")
+	want := [][]rune{[]rune("linkdir/"), []rune("real/")}
+
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("dirSuffixes = %q, want %q", got, want)
+	}
+}
+
 // fakeStdin points os.Stdin, which readline reads by default, at a pipe
 // holding input, and sends readline's own output to a discarded file.
 func fakeStdin(t *testing.T, input string) {
