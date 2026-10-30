@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"strings"
 
@@ -35,9 +36,54 @@ type cli struct {
 }
 
 func main() {
+	os.Exit(execute(os.Args[1:], os.Stdin, os.Stdout, os.Stderr))
+}
+
+// execute runs yat with args and returns the exit code. Commands that load items
+// write through their RunContext, which uses os.Stdout.
+func execute(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	var c cli
 
-	ctx := kong.Parse(&c,
+	ctx, code, ok := parse(&c, args, stdout, stderr)
+	if !ok {
+		return code
+	}
+
+	if ctx.Command() == "init" || ctx.Command() == "init <dir>" {
+		return report(stderr, c.Init.Run(c.JSON, stdout, stdin))
+	}
+
+	// agents and skill need no project, so they run before config loading.
+	if ctx.Command() == "agents" || strings.HasPrefix(ctx.Command(), "skill ") {
+		return report(stderr, ctx.Run(&cmd.SkillEnv{
+			JSON:        c.JSON,
+			Interactive: isTerminal(stdin),
+			Stdout:      stdout,
+			Stderr:      stderr,
+			Stdin:       stdin,
+		}))
+	}
+
+	return runProject(ctx, &c, stdout, stderr)
+}
+
+// kongExit carries the exit code kong asks for out of parse.
+type kongExit int
+
+// parse parses args into c. ok is false when kong has already handled them,
+// as for --help or a usage error, and the run should end with code.
+func parse(c *cli, args []string, stdout, stderr io.Writer) (ctx *kong.Context, code int, ok bool) {
+	defer func() {
+		if r := recover(); r != nil {
+			exit, isExit := r.(kongExit)
+			if !isExit {
+				panic(r)
+			}
+			ctx, code, ok = nil, int(exit), false
+		}
+	}()
+
+	parser := kong.Must(c,
 		kong.Name("yat"),
 		kong.Description("YAML tracker — a lightweight CLI for issue tracking with YAML.\n\n"+
 			"Items are .md files with YAML frontmatter containing an id field.\n"+
@@ -46,65 +92,70 @@ func main() {
 			"Run yat with no command to see in-progress and ready items at a glance."),
 		kong.UsageOnError(),
 		kong.Vars{"skill_agents": skill.AgentNames()},
+		kong.Writers(stdout, stderr),
+		kong.Exit(func(code int) { panic(kongExit(code)) }),
 	)
 
-	if ctx.Command() == "init" || ctx.Command() == "init <dir>" {
-		if err := c.Init.Run(c.JSON, os.Stdout, os.Stdin); err != nil {
-			fmt.Fprintf(os.Stderr, "error: %v\n", err)
-			os.Exit(1)
-		}
-		os.Exit(0)
+	ctx, err := parser.Parse(args)
+	parser.FatalIfErrorf(err)
+
+	return ctx, 0, true
+}
+
+// runProject runs a command that needs the project's items.
+func runProject(ctx *kong.Context, c *cli, stdout, stderr io.Writer) int {
+	cfg, err := config.LoadWithFallback(c.Dir)
+	if err != nil {
+		return report(stderr, err)
 	}
 
-	// agents and skill need no project, so they run before config loading.
-	if ctx.Command() == "agents" || strings.HasPrefix(ctx.Command(), "skill ") {
-		env := &cmd.SkillEnv{
-			JSON:        c.JSON,
-			Interactive: term.IsTerminal(int(os.Stdin.Fd())), //nolint:gosec // file descriptors fit in int
-			Stdout:      os.Stdout,
-			Stderr:      os.Stderr,
-			Stdin:       os.Stdin,
-		}
-		if err := ctx.Run(env); err != nil {
-			fmt.Fprintf(os.Stderr, "error: %v\n", err)
-			os.Exit(1)
-		}
-		os.Exit(0)
-	}
-
-	cfg, cfgErr := config.LoadWithFallback(c.Dir)
-	if cfgErr != nil {
-		fmt.Fprintf(os.Stderr, "error: %v\n", cfgErr)
-		os.Exit(1)
-	}
-
-	dir := c.Dir
-	if dir == "" {
-		dir = cfg.Dir
-	}
-
-	if dir == "" {
-		dir = "spec"
-	}
+	dir := itemsDir(c.Dir, cfg.Dir)
 
 	if _, statErr := os.Stat(dir); os.IsNotExist(statErr) {
 		// Only a defaulted directory means "not in a project"; a configured one that is missing is an error.
-		exitMissingDir(dir, ctx.Command() == "dashboard" && c.Dir == "" && cfg.Dir == "", c.JSON)
+		onboard := ctx.Command() == "dashboard" && c.Dir == "" && cfg.Dir == ""
+		return missingDir(stdout, stderr, dir, onboard, c.JSON)
 	}
 
 	rc, err := newRunContext(ctx.Selected(), dir, c.JSON, &cfg)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "error: %v\n", err)
-		os.Exit(1)
+		return report(stderr, err)
 	}
 
 	err = ctx.Run(rc)
 	rc.Unlock()
 
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "error: %v\n", err)
-		os.Exit(1)
+	return report(stderr, err)
+}
+
+// itemsDir returns the items directory: the --dir flag, else the config's
+// dir, else spec.
+func itemsDir(flagDir, configDir string) string {
+	if flagDir != "" {
+		return flagDir
 	}
+
+	if configDir != "" {
+		return configDir
+	}
+
+	return "spec"
+}
+
+// report writes err, if any, to stderr and returns the exit code for it.
+func report(stderr io.Writer, err error) int {
+	if err != nil {
+		fmt.Fprintf(stderr, "error: %v\n", err)
+		return 1
+	}
+
+	return 0
+}
+
+// isTerminal reports whether r is a terminal.
+func isTerminal(r io.Reader) bool {
+	f, ok := r.(*os.File)
+	return ok && term.IsTerminal(int(f.Fd())) //nolint:gosec // file descriptors fit in int
 }
 
 // newRunContext loads the items for the selected command. A command that
@@ -130,19 +181,16 @@ func newRunContext(selected *kong.Node, dir string, jsonOutput bool, cfg *config
 	return cmd.NewLockedRunContext(dir, jsonOutput, cfg)
 }
 
-// exitMissingDir exits when the items directory does not exist: 0 with an
-// onboarding hint when onboard is set, 1 with an error otherwise.
-func exitMissingDir(dir string, onboard, jsonOutput bool) {
+// missingDir handles an items directory that does not exist: exit code 0
+// with an onboarding hint when onboard is set, 1 with an error otherwise.
+func missingDir(stdout, stderr io.Writer, dir string, onboard, jsonOutput bool) int {
 	if onboard {
-		if err := cmd.WriteNoProject(os.Stdout, jsonOutput, dir); err != nil {
-			fmt.Fprintf(os.Stderr, "error: %v\n", err)
-			os.Exit(1)
-		}
-		os.Exit(0)
+		return report(stderr, cmd.WriteNoProject(stdout, jsonOutput, dir))
 	}
 
-	fmt.Fprintf(os.Stderr, "error: items directory %q not found.\n", dir)
-	fmt.Fprintf(os.Stderr,
+	fmt.Fprintf(stderr, "error: items directory %q not found.\n", dir)
+	fmt.Fprintf(stderr,
 		"Run 'yat init' to create a new project, or use --dir to specify a different directory.\n")
-	os.Exit(1)
+
+	return 1
 }
