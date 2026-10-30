@@ -4,6 +4,7 @@ package graph
 import (
 	"errors"
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 
@@ -167,7 +168,8 @@ func uniqueDeps(deps []string) []string {
 }
 
 // detectCycles verifies all nodes appear in the topological sort.
-// Nodes involved in cycles will have permanently non-zero in-degree.
+// Nodes left out are on a cycle or depend on one; the error names only the
+// ones on a cycle.
 func (g *Graph) detectCycles() error {
 	layers := g.TopologicalLayers()
 
@@ -188,15 +190,89 @@ func (g *Graph) detectCycles() error {
 	}
 
 	var cyclic []string
-	for id := range g.items {
-		if !inLayer[id] {
-			cyclic = append(cyclic, id)
-		}
+	for id := range g.onCycle(inLayer) {
+		cyclic = append(cyclic, id)
 	}
 
 	sort.Strings(cyclic)
 
 	return fmt.Errorf("dependency cycle detected involving: %s", strings.Join(cyclic, ", "))
+}
+
+// onCycle returns the items, outside sorted, that lie on a dependency cycle.
+func (g *Graph) onCycle(sorted map[string]bool) map[string]bool {
+	t := &tarjan{
+		g:       g,
+		sorted:  sorted,
+		index:   make(map[string]int),
+		low:     make(map[string]int),
+		onStack: make(map[string]bool),
+		cyclic:  make(map[string]bool),
+	}
+
+	for id := range g.items {
+		if _, seen := t.index[id]; !seen && !sorted[id] {
+			t.visit(id)
+		}
+	}
+
+	return t.cyclic
+}
+
+// tarjan finds strongly connected components among the items outside sorted
+// (Tarjan's algorithm). An item is on a cycle when its component has two or
+// more items, or when it depends on itself.
+type tarjan struct {
+	g       *Graph
+	sorted  map[string]bool
+	index   map[string]int
+	low     map[string]int
+	onStack map[string]bool
+	stack   []string
+	cyclic  map[string]bool
+}
+
+func (t *tarjan) visit(id string) {
+	t.index[id], t.low[id] = len(t.index), len(t.index)
+	t.stack = append(t.stack, id)
+	t.onStack[id] = true
+
+	for _, dep := range t.g.forward[id] {
+		if t.sorted[dep] {
+			continue
+		}
+
+		if _, seen := t.index[dep]; !seen {
+			t.visit(dep)
+			t.low[id] = min(t.low[id], t.low[dep])
+		} else if t.onStack[dep] {
+			t.low[id] = min(t.low[id], t.index[dep])
+		}
+	}
+
+	if t.low[id] == t.index[id] {
+		t.popComponent(id)
+	}
+}
+
+// popComponent pops the component rooted at id off the stack and records its
+// members that are on a cycle.
+func (t *tarjan) popComponent(id string) {
+	start := len(t.stack) - 1
+	for t.stack[start] != id {
+		start--
+	}
+
+	component := t.stack[start:]
+	t.stack = t.stack[:start]
+
+	for _, member := range component {
+		t.onStack[member] = false
+
+		if len(component) > 1 || slices.Contains(t.g.forward[member], member) {
+			t.cyclic[member] = true
+		}
+	}
 }
 
 // Ready returns items not yet started whose dependencies are all done.
