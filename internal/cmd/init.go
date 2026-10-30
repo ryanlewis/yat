@@ -87,26 +87,11 @@ func (i *InitCmd) Run(jsonMode bool, stdout io.Writer, stdin io.Reader) error {
 		return fmt.Errorf("yat is already initialized (%s exists)", existing)
 	}
 
-	scanner := bufio.NewScanner(stdin)
-	dir := i.Dir
-
-	switch {
-	case dir != "":
-		expanded, err := config.ExpandTilde(dir)
-		if err != nil {
-			return err
-		}
-		dir = expanded
-	case isTerminal(stdin):
-		var err error
-		dir, err = promptDirInteractive(stdout, stdin)
-		if err != nil {
-			return err
-		}
-	default:
-		showDirSuggestions(stdout)
-		dir = promptDir(scanner, stdout)
+	dir, ask, err := i.chooseDir(stdout, stdin)
+	if err != nil {
+		return err
 	}
+	defer ask.close()
 
 	plan := buildInitPlan(dir)
 
@@ -116,17 +101,26 @@ func (i *InitCmd) Run(jsonMode bool, stdout io.Writer, stdin io.Reader) error {
 	}
 
 	if len(found) > 0 {
-		fmt.Fprintf(stdout, "Add yat instructions to %s? [Y/n]: ", strings.Join(found, ", "))
-		if confirmPrompt(scanner) {
+		add, confirmErr := confirm(ask, fmt.Sprintf("Add yat instructions to %s? [Y/n]: ", strings.Join(found, ", ")))
+		if confirmErr != nil {
+			return confirmErr
+		}
+
+		if add {
 			plan.agentFiles = found
 		}
 	}
 
 	printPlan(stdout, plan)
 
-	fmt.Fprintf(stdout, "\nProceed? [Y/n]: ")
+	fmt.Fprintln(stdout)
 
-	if !confirmPrompt(scanner) {
+	ok, err := confirm(ask, "Proceed? [Y/n]: ")
+	if err != nil {
+		return err
+	}
+
+	if !ok {
 		fmt.Fprintln(stdout, "Aborted.")
 		return nil
 	}
@@ -137,6 +131,75 @@ func (i *InitCmd) Run(jsonMode bool, stdout io.Writer, stdin io.Reader) error {
 
 	return printResult(jsonMode, stdout, plan, skipped)
 }
+
+// chooseDir returns the items directory and the prompter that asks the rest of
+// init's questions. Every answer goes through that one prompter: readline and
+// bufio.Scanner both read ahead, so a second reader on the same input would
+// lose answers sent together, as when piped or pasted.
+func (i *InitCmd) chooseDir(stdout io.Writer, stdin io.Reader) (string, prompter, error) {
+	scanner := bufio.NewScanner(stdin)
+
+	switch {
+	case i.Dir != "":
+		dir, err := config.ExpandTilde(i.Dir)
+		return dir, scanPrompter{stdout: stdout, scanner: scanner}, err
+	case isTerminal(stdin):
+		return promptDirInteractive(stdout, stdin)
+	default:
+		showDirSuggestions(stdout)
+		return promptDir(scanner, stdout), scanPrompter{stdout: stdout, scanner: scanner}, nil
+	}
+}
+
+// prompter asks a question and returns the next line of input.
+type prompter interface {
+	ask(prompt string) (string, error)
+	close()
+}
+
+// scanPrompter prints each prompt to stdout and reads lines with one scanner.
+type scanPrompter struct {
+	stdout  io.Writer
+	scanner *bufio.Scanner
+}
+
+func (p scanPrompter) ask(prompt string) (string, error) {
+	fmt.Fprint(p.stdout, prompt)
+
+	if p.scanner.Scan() {
+		return p.scanner.Text(), nil
+	}
+
+	if err := p.scanner.Err(); err != nil {
+		return "", err
+	}
+
+	return "", io.EOF
+}
+
+func (p scanPrompter) close() {}
+
+// readlinePrompter asks every question through one readline instance.
+type readlinePrompter struct {
+	rl *readline.Instance
+}
+
+func (p readlinePrompter) ask(prompt string) (string, error) {
+	p.rl.SetPrompt(prompt)
+
+	line, err := p.rl.ReadLine()
+	if errors.Is(err, readline.ErrInterrupt) {
+		return "", errInterrupted
+	}
+
+	return line, err
+}
+
+func (p readlinePrompter) close() {
+	_ = p.rl.Close()
+}
+
+var errInterrupted = errors.New("interrupted")
 
 func existingConfig() string {
 	for _, name := range config.ConfigNames {
@@ -353,20 +416,27 @@ func printResult(jsonMode bool, stdout io.Writer, p initPlan, skipped []string) 
 	return nil
 }
 
+// promptDir asks for the items directory on scanner, which the caller goes on
+// using for later questions.
 func promptDir(scanner *bufio.Scanner, stdout io.Writer) string {
-	for {
-		fmt.Fprintf(stdout, "Items directory [%s]: ", defaultDir)
+	ask := scanPrompter{stdout: stdout, scanner: scanner}
 
-		dir := defaultDir
-		if scanner.Scan() {
-			if line := strings.TrimSpace(scanner.Text()); line != "" {
-				dir = filepath.Clean(line)
-			}
-		} else {
+	for {
+		line, err := ask.ask(fmt.Sprintf("Items directory [%s]: ", defaultDir))
+		if err != nil {
 			return defaultDir
 		}
 
-		dir, ok := resolveDir(dir, scanner, stdout)
+		dir := defaultDir
+		if line = strings.TrimSpace(line); line != "" {
+			dir = filepath.Clean(line)
+		}
+
+		dir, ok, err := resolveDir(dir, ask, stdout)
+		if err != nil {
+			return defaultDir
+		}
+
 		if ok {
 			return dir
 		}
@@ -375,23 +445,25 @@ func promptDir(scanner *bufio.Scanner, stdout io.Writer) string {
 
 // resolveDir expands tildes, checks whether the directory exists, and if not,
 // asks the user to confirm creation. Returns the resolved path and true if
-// accepted, or ("", false) to re-prompt.
-func resolveDir(dir string, scanner *bufio.Scanner, stdout io.Writer) (string, bool) {
+// accepted, or ("", false) to re-prompt. The error is set only if the user
+// interrupted the confirm.
+func resolveDir(dir string, ask prompter, stdout io.Writer) (resolved string, ok bool, err error) {
 	expanded, expandErr := config.ExpandTilde(dir)
 	if expandErr != nil {
 		fmt.Fprintf(stdout, "Cannot expand ~: %v\n", expandErr)
-		return "", false
+		return "", false, nil
 	}
 	dir = expanded
 
-	if info, err := os.Stat(dir); err == nil && info.IsDir() {
-		return dir, true
+	if info, statErr := os.Stat(dir); statErr == nil && info.IsDir() {
+		return dir, true, nil
 	}
 
 	fmt.Fprintf(stdout, "Directory %q does not exist and will be created.\n", dir)
-	fmt.Fprintf(stdout, "Use this path? [Y/n]: ")
 
-	return dir, confirmPrompt(scanner)
+	ok, err = confirm(ask, "Use this path? [Y/n]: ")
+
+	return dir, ok, err
 }
 
 func showDirSuggestions(stdout io.Writer) {
@@ -433,26 +505,39 @@ func isTerminal(r io.Reader) bool {
 	return term.IsTerminal(int(f.Fd())) //nolint:gosec // file descriptors fit in int
 }
 
-func promptDirInteractive(stdout io.Writer, stdin io.Reader) (string, error) {
+// promptDirInteractive asks for the items directory with tab completion. It
+// returns the prompter for init's later questions, which the caller closes;
+// on error the prompter is already closed.
+func promptDirInteractive(stdout io.Writer, stdin io.Reader) (string, prompter, error) {
 	showDirSuggestions(stdout)
 
-	rl, err := readline.NewFromConfig(&readline.Config{
-		Prompt:       fmt.Sprintf("Items directory [%s]: ", defaultDir),
-		AutoComplete: dirAutoCompleter{},
-	})
+	rl, err := readline.NewFromConfig(&readline.Config{AutoComplete: dirAutoCompleter{}})
 	if err != nil {
 		fmt.Fprintf(stdout, "Note: tab completion unavailable (%v)\n", err)
 		scanner := bufio.NewScanner(stdin)
-		return promptDir(scanner, stdout), nil
-	}
-	defer rl.Close()
 
+		return promptDir(scanner, stdout), scanPrompter{stdout: stdout, scanner: scanner}, nil
+	}
+
+	ask := readlinePrompter{rl: rl}
+
+	dir, err := readDirInteractive(ask, stdout)
+	if err != nil {
+		ask.close()
+		return "", nil, err
+	}
+
+	return dir, ask, nil
+}
+
+func readDirInteractive(ask prompter, stdout io.Writer) (string, error) {
 	for {
-		line, err := rl.Readline()
+		line, err := ask.ask(fmt.Sprintf("Items directory [%s]: ", defaultDir))
+		if errors.Is(err, errInterrupted) {
+			return "", err
+		}
+
 		if err != nil {
-			if errors.Is(err, readline.ErrInterrupt) {
-				return "", fmt.Errorf("interrupted")
-			}
 			return "", fmt.Errorf("reading input: %w", err)
 		}
 
@@ -461,10 +546,12 @@ func promptDirInteractive(stdout io.Writer, stdin io.Reader) (string, error) {
 			dir = defaultDir
 		}
 
-		dir = filepath.Clean(dir)
+		resolved, ok, err := resolveDir(filepath.Clean(dir), ask, stdout)
+		if err != nil {
+			return "", err
+		}
 
-		scanner := bufio.NewScanner(stdin)
-		if resolved, ok := resolveDir(dir, scanner, stdout); ok {
+		if ok {
 			return resolved, nil
 		}
 	}
@@ -525,13 +612,21 @@ func dirSuffixes(dir, prefix, prepend string) [][]rune {
 	return candidates
 }
 
-func confirmPrompt(scanner *bufio.Scanner) bool {
-	if scanner.Scan() {
-		line := strings.TrimSpace(strings.ToLower(scanner.Text()))
-		return line == "" || line == "y" || line == "yes"
+// confirm asks a yes/no question that defaults to yes. End of input is a no;
+// an interrupt is returned as an error.
+func confirm(ask prompter, prompt string) (bool, error) {
+	line, err := ask.ask(prompt)
+	if errors.Is(err, errInterrupted) {
+		return false, err
 	}
 
-	return false
+	if err != nil {
+		return false, nil
+	}
+
+	line = strings.TrimSpace(strings.ToLower(line))
+
+	return line == "" || line == "y" || line == "yes", nil
 }
 
 func countMDFiles(dir string) int {
