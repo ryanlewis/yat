@@ -403,7 +403,7 @@ func showDirSuggestions(stdout io.Writer) {
 	var parts []string
 
 	for _, e := range entries {
-		if !e.IsDir() || strings.HasPrefix(e.Name(), ".") {
+		if strings.HasPrefix(e.Name(), ".") || !isDirEntry(".", e) {
 			continue
 		}
 
@@ -524,14 +524,13 @@ func dirSuffixes(dir, prefix, prepend string) [][]rune {
 	var candidates [][]rune
 
 	for _, e := range entries {
-		if strings.HasPrefix(e.Name(), ".") || !isDirEntry(dir, e) {
+		// Check the name before isDirEntry, which stats symlinks.
+		if strings.HasPrefix(e.Name(), ".") || !strings.HasPrefix(e.Name(), prefix) || !isDirEntry(dir, e) {
 			continue
 		}
 
-		if strings.HasPrefix(e.Name(), prefix) {
-			suffix := e.Name()[len(prefix):]
-			candidates = append(candidates, []rune(prepend+suffix+"/"))
-		}
+		suffix := e.Name()[len(prefix):]
+		candidates = append(candidates, []rune(prepend+suffix+"/"))
 	}
 
 	return candidates
