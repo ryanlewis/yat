@@ -40,7 +40,8 @@ func main() {
 }
 
 // execute runs yat with args and returns the exit code. Commands that load items
-// write through their RunContext, which uses os.Stdout.
+// still write through their RunContext, which uses os.Stdout, and add reads a
+// piped body from os.Stdin.
 func execute(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	var c cli
 
