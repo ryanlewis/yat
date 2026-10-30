@@ -8,7 +8,7 @@ yat (YAML tracker) is a lightweight CLI issue tracker. Items (stories, tasks, sp
 
 ```sh
 make build       # build binary to ./yat
-make test        # go test -v -race -coverprofile=coverage.out ./...
+make test        # go test -v -race -count=1 -coverprofile=coverage.out ./..., then merges e2e coverage
 make lint        # golangci-lint run
 make coverage    # generate HTML coverage report
 make clean       # remove binary, coverage files

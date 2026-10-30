@@ -114,7 +114,23 @@ func TestFormatTypeCounts_CleanedTypesMerge(t *testing.T) {
 
 func TestFormatTypeCounts_CustomOrder(t *testing.T) {
 	got := formatTypeCounts(map[string]int{"Epic": 1, "Bug": 1, "Chore": 3, "Task": 9})
-	want := []string{"9 tasks", "3 chores", "1 bugs", "1 epics"}
+	want := []string{"9 tasks", "3 chores", "1 bug", "1 epic"}
+	if strings.Join(got, "|") != strings.Join(want, "|") {
+		t.Errorf("got %q, want %q", got, want)
+	}
+}
+
+func TestFormatTypeCounts_SingleItemIsSingular(t *testing.T) {
+	got := formatTypeCounts(map[string]int{"Spike": 1, "Story": 1, "Task": 2})
+	want := []string{"1 spike", "2 tasks", "1 story"}
+	if strings.Join(got, "|") != strings.Join(want, "|") {
+		t.Errorf("got %q, want %q", got, want)
+	}
+}
+
+func TestFormatTypeCounts_Untyped(t *testing.T) {
+	got := formatTypeCounts(map[string]int{"": 2, " ": 1, "Task": 1})
+	want := []string{"1 task", "3 untyped"}
 	if strings.Join(got, "|") != strings.Join(want, "|") {
 		t.Errorf("got %q, want %q", got, want)
 	}

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"slices"
 	"strings"
 
 	"gopkg.in/yaml.v3"
@@ -517,6 +518,8 @@ func validateStatus(item *Item, opts ParseOptions, path string) error {
 			for s := range opts.ValidStatuses {
 				valid = append(valid, string(s))
 			}
+
+			slices.Sort(valid)
 
 			return fmt.Errorf("invalid status %q in %s: must be one of %v", item.Status, path, valid)
 		}
