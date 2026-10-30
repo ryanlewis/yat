@@ -158,9 +158,9 @@ func TestParse_DelimiterEdgeCases(t *testing.T) {
 			wantID: "TK-001",
 		},
 		{
-			name:   "a line starting with more than --- does not close",
-			input:  "---\nid: TK-001\ntitle: |\n  x\n---- \n---\n",
-			wantID: "TK-001",
+			name:    "a ---- line does not close, so it is read as YAML",
+			input:   "---\nid: TK-001\n----\n---\n",
+			wantErr: true,
 		},
 		{
 			name:   "closing delimiter at exact EOF",
@@ -170,7 +170,7 @@ func TestParse_DelimiterEdgeCases(t *testing.T) {
 		{
 			name:    "CR-only line endings",
 			input:   "---\rid: TK-001\rstatus: todo\r---\r",
-			wantNil: true, // opening --- must be followed by \n or \r, and \r is valid...
+			wantErr: true, // the opening --- is followed by \r, but no "\n---" line closes it
 		},
 	}
 

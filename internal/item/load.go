@@ -16,9 +16,10 @@ var warnOut io.Writer = os.Stderr
 // LoadAll discovers and parses all .md files from the given directory (recursively).
 // Files without a valid id field in frontmatter are silently skipped. Files that
 // cannot be read, subdirectories that cannot be read, and files whose frontmatter
-// is not a YAML mapping are skipped with a warning on stderr. The paths of the
-// files and subdirectories that could not be read are returned as skipped, as
-// an item they hold is missing from the result.
+// is not a YAML mapping or never closes are skipped with a warning on stderr. The
+// paths of the files and subdirectories that could not be read, and of files whose
+// frontmatter never closes, are returned as skipped, as an item they hold is
+// missing from the result.
 func LoadAll(dir string) (items []*Item, skipped []string, err error) {
 	return LoadAllWithOptions(dir, ParseOptions{})
 }
@@ -113,10 +114,12 @@ func loadFile(path string, opts ParseOptions, warnSkip func(path string, err err
 		return nil, nil
 	}
 
-	if errors.Is(err, ErrNotMapping) {
-		warnSkip(path, ErrNotMapping)
+	for _, skipErr := range []error{ErrNotMapping, ErrUnclosedFrontmatter} {
+		if errors.Is(err, skipErr) {
+			warnSkip(path, skipErr)
 
-		return nil, nil
+			return nil, nil
+		}
 	}
 
 	return nil, fmt.Errorf("loading %s: %w", path, err)
