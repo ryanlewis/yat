@@ -101,7 +101,7 @@ func LoadWithFallback(fallbackDir string) (Config, error) {
 		return Config{}, err
 	}
 
-	primary, _, err := loadWalk(dir)
+	primary, primaryPath, err := loadWalk(dir)
 	if err != nil {
 		return Config{}, err
 	}
@@ -113,13 +113,17 @@ func LoadWithFallback(fallbackDir string) (Config, error) {
 		secondaryDir = primary.Dir
 	}
 
+	var secondaryPath string
+
 	if secondaryDir != "" {
-		secondary, secondaryFound, err := loadWalk(secondaryDir)
+		var secondary Config
+
+		secondary, secondaryPath, err = loadWalk(secondaryDir)
 		if err != nil {
 			return Config{}, err
 		}
 
-		if secondaryFound {
+		if secondaryPath != "" {
 			primary.MergeFrom(&secondary)
 		}
 	}
@@ -127,31 +131,46 @@ func LoadWithFallback(fallbackDir string) (Config, error) {
 	primary.Defaults()
 
 	if err := primary.Validate(); err != nil {
-		return Config{}, err
+		return Config{}, fmt.Errorf("invalid config %s: %w", describeSources(primaryPath, secondaryPath), err)
 	}
 
 	return primary, nil
 }
 
+// describeSources names the files a merged config came from. Validation runs
+// on the merged result, so a bad value can come from either file and the
+// error names both.
+func describeSources(primaryPath, secondaryPath string) string {
+	switch {
+	case primaryPath != "" && secondaryPath != "":
+		return primaryPath + " (merged with " + secondaryPath + ")"
+	case primaryPath != "":
+		return primaryPath
+	default:
+		return secondaryPath
+	}
+}
+
 // loadWalk searches for a config file starting from startDir and walking up
-// to the filesystem root.
-func loadWalk(startDir string) (Config, bool, error) {
+// to the filesystem root. It returns the path of the file it loaded, or an
+// empty path if there was none.
+func loadWalk(startDir string) (Config, string, error) {
 	dir := startDir
 
 	for {
-		cfg, found, err := tryLoadFromDir(dir)
+		cfg, path, err := tryLoadFromDir(dir)
 		if err != nil {
-			return Config{}, false, err
+			return Config{}, "", err
 		}
 
-		if found {
+		if path != "" {
 			// A relative dir is relative to the config file, not to where the
 			// search started. Left as is when they match, so paths stay short.
 			if dir != startDir && cfg.Dir != "" && !filepath.IsAbs(cfg.Dir) {
 				cfg.Dir = filepath.Join(dir, cfg.Dir)
 			}
 
-			return cfg, true, nil
+			return cfg, path, nil
 		}
 
 		parent := filepath.Dir(dir)
@@ -162,12 +181,13 @@ func loadWalk(startDir string) (Config, bool, error) {
 		dir = parent
 	}
 
-	return Config{}, false, nil
+	return Config{}, "", nil
 }
 
 // tryLoadFromDir tries each config file name in the given directory.
-// Returns the parsed config and true if found, or zero Config and false if not.
-func tryLoadFromDir(dir string) (Config, bool, error) {
+// Returns the parsed config and the file's path, or a zero Config and an empty
+// path if none was found.
+func tryLoadFromDir(dir string) (Config, string, error) {
 	for _, name := range ConfigNames {
 		path := filepath.Join(dir, name)
 
@@ -177,25 +197,26 @@ func tryLoadFromDir(dir string) (Config, bool, error) {
 				continue
 			}
 
-			return Config{}, false, fmt.Errorf("reading config %s: %w", path, readErr)
+			// The PathError already holds the path.
+			return Config{}, "", fmt.Errorf("reading config: %w", readErr)
 		}
 
 		var cfg Config
 		if err := yaml.Unmarshal(data, &cfg); err != nil {
-			return Config{}, false, fmt.Errorf("parsing config %s: %w", path, err)
+			return Config{}, "", fmt.Errorf("parsing config %s: %w", path, err)
 		}
 
 		expanded, expandErr := ExpandTilde(cfg.Dir)
 		if expandErr != nil {
-			return Config{}, false, fmt.Errorf("config %s: %w", path, expandErr)
+			return Config{}, "", fmt.Errorf("config %s: %w", path, expandErr)
 		}
 
 		cfg.Dir = expanded
 
-		return cfg, true, nil
+		return cfg, path, nil
 	}
 
-	return Config{}, false, nil
+	return Config{}, "", nil
 }
 
 // canonicalFields is the set of field names that can appear as alias keys.
