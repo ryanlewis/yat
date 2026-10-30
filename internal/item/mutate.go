@@ -433,8 +433,9 @@ func writeFileAtomic(path string, data []byte) error {
 
 	dir := filepath.Dir(path)
 
-	// The name ends in .tmp, not .md, so LoadAll never picks it up.
-	tmp, err := os.CreateTemp(dir, "."+filepath.Base(path)+".*.tmp")
+	// The name ends in .tmp, not .md, so LoadAll never picks it up. It leaves out
+	// the item's name, so it fits wherever that name does.
+	tmp, err := os.CreateTemp(dir, ".yat-*.tmp")
 	if err != nil {
 		if canWriteInPlace(err) {
 			return os.WriteFile(path, data, info.Mode().Perm())

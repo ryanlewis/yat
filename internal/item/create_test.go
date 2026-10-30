@@ -174,3 +174,18 @@ func TestWriteNew_ClosedFile(t *testing.T) {
 		t.Errorf("writeNew on a closed file = %v, want os.ErrClosed", err)
 	}
 }
+
+// A file whose name is near the 255-byte name limit can still be created: the
+// temp file written next to it must not need a longer name.
+func TestCreateFile_LongFileName(t *testing.T) {
+	path := filepath.Join(t.TempDir(), strings.Repeat("a", 247)+".md")
+
+	if err := CreateFile(path, []byte("x"), 0o644); err != nil {
+		t.Fatalf("CreateFile: %v", err)
+	}
+
+	data, err := os.ReadFile(path)
+	if err != nil || string(data) != "x" {
+		t.Errorf("got %q, %v; want \"x\"", data, err)
+	}
+}
