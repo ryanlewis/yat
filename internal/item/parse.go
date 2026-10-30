@@ -79,6 +79,38 @@ func ParseWithOptions(data []byte, path string, opts ParseOptions) (*Item, error
 		return nil, err
 	}
 
+	item, err := decodeItem(fm, path)
+	if err != nil {
+		return nil, err
+	}
+
+	if item.ID == "" {
+		if looksLikeItem(item) {
+			return nil, fmt.Errorf("%w: %s", ErrMissingID, path)
+		}
+
+		return nil, nil
+	}
+
+	if err := validateFields(item, opts, path); err != nil {
+		return nil, err
+	}
+
+	item.Dependencies = dedupe(item.Dependencies)
+	item.FilePath = path
+	item.StatusKey = statusKey
+	item.Body = string(body)
+
+	if item.Title == "" {
+		item.Title = extractHeading(body)
+	}
+
+	return item, nil
+}
+
+// decodeItem decodes frontmatter into an Item, leaving the yat directive out of
+// its extra fields.
+func decodeItem(fm []byte, path string) (*Item, error) {
 	var item Item
 	if err := yaml.Unmarshal(fm, &item); err != nil {
 		if isNonMapping(fm) {
@@ -91,31 +123,6 @@ func ParseWithOptions(data []byte, path string, opts ParseOptions) (*Item, error
 	delete(item.Extra, "yat")
 	if len(item.Extra) == 0 {
 		item.Extra = nil
-	}
-
-	if item.ID == "" {
-		if looksLikeItem(&item) {
-			return nil, fmt.Errorf("%w: %s", ErrMissingID, path)
-		}
-
-		return nil, nil
-	}
-
-	if err := validateStatus(&item, opts, path); err != nil {
-		return nil, err
-	}
-
-	if !item.Priority.Valid() {
-		return nil, fmt.Errorf("invalid priority %q in %s: must be Critical, High, Medium, or Low", item.Priority, path)
-	}
-
-	item.Dependencies = dedupe(item.Dependencies)
-	item.FilePath = path
-	item.StatusKey = statusKey
-	item.Body = string(body)
-
-	if item.Title == "" {
-		item.Title = extractHeading(body)
 	}
 
 	return &item, nil
@@ -176,32 +183,16 @@ func (s *headingScanner) scan(line []byte) (string, bool) {
 	start := indentWidth(line)
 	inList := len(s.lists) > 0
 
-	// A line indented less than an item's content is outside that item, unless
-	// it lazily continues the item's paragraph.
-	if s.para && inList && start < s.lists[len(s.lists)-1] && !interruptsParagraph(trimmed, start, true) {
+	if s.lazyContinues(trimmed, start) {
 		return "", false
-	}
-
-	var indent int
-	s.lists, indent = listIndent(s.lists, start)
-
-	if s.fence != nil && len(s.lists) < s.fenceDepth {
-		s.fence = nil // closing the item closes the fence inside it
 	}
 
 	// Four columns of indent make a code line: never a heading or a fence.
-	if indent >= codeIndent {
+	if s.closeBlocks(start) >= codeIndent {
 		return "", false
 	}
 
-	if s.scanFence(trimmed) {
-		return "", false
-	}
-
-	if col := listContentColumn(trimmed, start); col > 0 && (!s.para || interruptsParagraph(trimmed, start, inList)) {
-		s.lists = append(s.lists, col)
-		s.para = len(trimmed) > listMarker(trimmed)
-
+	if s.scanFence(trimmed) || s.scanListItem(trimmed, start, inList) {
 		return "", false
 	}
 
@@ -212,6 +203,42 @@ func (s *headingScanner) scan(line []byte) (string, bool) {
 	s.para = true
 
 	return "", false
+}
+
+// lazyContinues reports whether line, at start columns, lazily continues the
+// paragraph of the innermost list item. A line indented less than an item's
+// content is outside that item, unless it continues the item's paragraph.
+func (s *headingScanner) lazyContinues(line []byte, start int) bool {
+	return s.para && len(s.lists) > 0 && start < s.lists[len(s.lists)-1] &&
+		!interruptsParagraph(line, start, true)
+}
+
+// closeBlocks closes the list items, and any fence inside them, that a line at
+// start columns falls outside, and returns the line's indent from the content
+// column of the innermost item still open.
+func (s *headingScanner) closeBlocks(start int) int {
+	var indent int
+	s.lists, indent = listIndent(s.lists, start)
+
+	if s.fence != nil && len(s.lists) < s.fenceDepth {
+		s.fence = nil // closing the item closes the fence inside it
+	}
+
+	return indent
+}
+
+// scanListItem opens a list item when line, at start columns, starts one, and
+// reports whether it did.
+func (s *headingScanner) scanListItem(line []byte, start int, inList bool) bool {
+	col := listContentColumn(line, start)
+	if col == 0 || (s.para && !interruptsParagraph(line, start, inList)) {
+		return false
+	}
+
+	s.lists = append(s.lists, col)
+	s.para = len(line) > listMarker(line)
+
+	return true
 }
 
 // scanFence opens or closes a fence on line and reports whether line is fenced
@@ -310,12 +337,12 @@ const maxOrderedDigits = 9
 // listMarker returns the length of the list marker (-, *, + or 1. / 1)) that
 // line starts with, or 0.
 func listMarker(line []byte) int {
-	if len(line) > 0 && (line[0] == '-' || line[0] == '*' || line[0] == '+') {
+	if len(line) > 0 && isBullet(line[0]) {
 		return 1
 	}
 
 	n := 0
-	for n < len(line) && n < maxOrderedDigits && line[n] >= '0' && line[n] <= '9' {
+	for n < min(len(line), maxOrderedDigits) && isDigit(line[n]) {
 		n++
 	}
 
@@ -324,6 +351,16 @@ func listMarker(line []byte) int {
 	}
 
 	return 0
+}
+
+// isBullet reports whether c marks a bullet list item.
+func isBullet(c byte) bool {
+	return c == '-' || c == '*' || c == '+'
+}
+
+// isDigit reports whether c is an ASCII digit.
+func isDigit(c byte) bool {
+	return c >= '0' && c <= '9'
 }
 
 // listContentColumn returns the column a list item's content starts at, for
@@ -342,6 +379,12 @@ func listContentColumn(line []byte, start int) int {
 		return 0
 	}
 
+	return markerGapEnd(line, start, n)
+}
+
+// markerGapEnd returns the column a list item's content starts at, given the
+// marker is the first n bytes of line and is followed by a space or tab.
+func markerGapEnd(line []byte, start, n int) int {
 	// One to four columns of space follow the marker; with five or more, the
 	// content starts after one and the rest is indented code.
 	col := start + n
@@ -445,21 +488,8 @@ func remapAliases(fm []byte, aliases map[string]string, path string) (remapped [
 // and returns the key the status is stored under ("" when there is none).
 func renameAliasKeys(mapping *yaml.Node, aliases map[string]string) (from string) {
 	isAlias := func(key string) bool { return aliases[key] != "" && aliases[key] != key }
-
-	owned := make(map[string]bool, len(mapping.Content)/2) // fields the file has a key of their own for
-	targets := make(map[string]bool, len(aliases))         // fields some alias stands for
-
-	for i := 0; i+1 < len(mapping.Content); i += 2 {
-		if key := keyName(mapping.Content[i]); !isAlias(key) {
-			owned[key] = true
-		}
-	}
-
-	for alias, canonical := range aliases {
-		if alias != canonical {
-			targets[canonical] = true
-		}
-	}
+	owned := ownedFields(mapping, isAlias)
+	targets := aliasTargets(aliases)
 
 	if owned[statusField] {
 		from = statusField
@@ -478,12 +508,7 @@ func renameAliasKeys(mapping *yaml.Node, aliases map[string]string) (from string
 				from = name
 			}
 
-			if key.Kind == yaml.AliasNode {
-				// Renaming an alias would point it at another anchor.
-				key = &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str"}
-			}
-
-			key.Value = canonical
+			key = renameKey(key, canonical)
 		case targets[name]:
 			// The field's own key wins. This alias key would read as the field
 			// it is named after, which another alias stands for, so drop it.
@@ -500,6 +525,45 @@ func renameAliasKeys(mapping *yaml.Node, aliases map[string]string) (from string
 	return from
 }
 
+// ownedFields returns the fields the file has a key of their own for: the keys
+// of mapping that isAlias does not report as aliases.
+func ownedFields(mapping *yaml.Node, isAlias func(string) bool) map[string]bool {
+	owned := make(map[string]bool, len(mapping.Content)/2)
+
+	for i := 0; i+1 < len(mapping.Content); i += 2 {
+		if key := keyName(mapping.Content[i]); !isAlias(key) {
+			owned[key] = true
+		}
+	}
+
+	return owned
+}
+
+// aliasTargets returns the fields some alias stands for.
+func aliasTargets(aliases map[string]string) map[string]bool {
+	targets := make(map[string]bool, len(aliases))
+
+	for alias, canonical := range aliases {
+		if alias != canonical {
+			targets[canonical] = true
+		}
+	}
+
+	return targets
+}
+
+// renameKey renames the mapping key node key to name and returns it.
+func renameKey(key *yaml.Node, name string) *yaml.Node {
+	if key.Kind == yaml.AliasNode {
+		// Renaming an alias would point it at another anchor.
+		key = &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str"}
+	}
+
+	key.Value = name
+
+	return key
+}
+
 // keyName returns the key a mapping key node reads as. An alias used as a key
 // (*s) reads as its anchor's value, as decoding takes it, not the anchor's name.
 func keyName(key *yaml.Node) string {
@@ -508,6 +572,20 @@ func keyName(key *yaml.Node) string {
 	}
 
 	return key.Value
+}
+
+// validateFields checks the status and priority fields on an item, and
+// normalizes the status.
+func validateFields(item *Item, opts ParseOptions, path string) error {
+	if err := validateStatus(item, opts, path); err != nil {
+		return err
+	}
+
+	if !item.Priority.Valid() {
+		return fmt.Errorf("invalid priority %q in %s: must be Critical, High, Medium, or Low", item.Priority, path)
+	}
+
+	return nil
 }
 
 // validateStatus checks and normalizes the status field on an item.
@@ -597,7 +675,7 @@ func frontmatterBounds(data []byte) (fmStart, fmEnd, bodyStart int, ok bool) {
 	// The opening --- must be followed by a newline (LF or CRLF), not arbitrary text.
 	fmStart = start + len(frontmatterDelimiter)
 	rest := data[fmStart:]
-	if len(rest) == 0 || (rest[0] != '\n' && rest[0] != '\r') {
+	if len(rest) == 0 || !isLineBreak(rest[0]) {
 		return 0, 0, 0, false
 	}
 	idx := bytes.Index(rest, []byte("\n---"))
@@ -607,20 +685,29 @@ func frontmatterBounds(data []byte) (fmStart, fmEnd, bodyStart int, ok bool) {
 
 	// The closing --- must be on its own line (followed by newline, CR, or EOF).
 	afterClose := rest[idx+len("\n---"):]
-	if len(afterClose) > 0 && afterClose[0] != '\n' && afterClose[0] != '\r' {
+	if len(afterClose) > 0 && !isLineBreak(afterClose[0]) {
 		return 0, 0, 0, false
 	}
 
 	fmEnd = fmStart + idx
 
 	// Body starts after the closing --- and its trailing newline
-	bodyStart = fmEnd + len("\n---")
-	if bodyStart < len(data) && data[bodyStart] == '\r' {
-		bodyStart++
-	}
-	if bodyStart < len(data) && data[bodyStart] == '\n' {
-		bodyStart++
-	}
+	bodyStart = skipByte(data, fmEnd+len("\n---"), '\r')
+	bodyStart = skipByte(data, bodyStart, '\n')
 
 	return fmStart, fmEnd, bodyStart, true
+}
+
+// isLineBreak reports whether c is a line feed or carriage return.
+func isLineBreak(c byte) bool {
+	return c == '\n' || c == '\r'
+}
+
+// skipByte returns i+1 when data[i] is c, else i.
+func skipByte(data []byte, i int, c byte) int {
+	if i < len(data) && data[i] == c {
+		return i + 1
+	}
+
+	return i
 }
