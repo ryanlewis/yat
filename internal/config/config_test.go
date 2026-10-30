@@ -885,3 +885,23 @@ func TestLoad_ReadErrorNamesPathOnce(t *testing.T) {
 		t.Errorf("error %q names %s %d times, want once", err, path, n)
 	}
 }
+
+func TestLoad_InvalidConfigWithRelativeDirNamesFileOnce(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, ".yat.yaml")
+	content := []byte("dir: spec\nstatuses:\n  done: [a]\n  active: [a]\n  initial: [b]\n")
+	if err := os.WriteFile(path, content, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	t.Chdir(dir)
+
+	_, err := config.Load()
+	if err == nil {
+		t.Fatal("expected an error for invalid config")
+	}
+
+	if strings.Contains(err.Error(), "merged") {
+		t.Errorf("error %q says the file was merged with another", err)
+	}
+}
