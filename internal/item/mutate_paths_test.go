@@ -498,3 +498,38 @@ func TestWriteAndClose(t *testing.T) {
 		}
 	})
 }
+
+// An item whose name is near the 255-byte name limit can still change status:
+// the temp file written next to it must not need a longer name.
+func TestSetStatus_LongFileName(t *testing.T) {
+	tests := []struct {
+		name string
+		base string
+	}{
+		{name: "ascii", base: strings.Repeat("a", 247) + ".md"},
+		{name: "multi-byte runes", base: strings.Repeat("é", 125) + ".md"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			path := writeMutateFixture(t, tt.base, "---\nstatus: todo\n---\nbody\n")
+
+			if err := SetStatus(path, StatusDone); err != nil {
+				t.Fatalf("SetStatus: %v", err)
+			}
+
+			if got, want := readMutateFile(t, path), "---\nstatus: done\n---\nbody\n"; got != want {
+				t.Errorf("got %q, want %q", got, want)
+			}
+
+			entries, err := os.ReadDir(filepath.Dir(path))
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			if len(entries) != 1 {
+				t.Errorf("dir holds %d entries, want only the item", len(entries))
+			}
+		})
+	}
+}

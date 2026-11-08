@@ -43,24 +43,13 @@ func SetStatusWithOptions(path string, newStatus Status, opts MutateOptions) err
 		fieldName = "status"
 	}
 
-	if opts.ValidStatuses != nil {
-		if newStatus == "" || !opts.ValidStatuses.Contains(newStatus) {
-			return fmt.Errorf("invalid status %q", newStatus)
-		}
-	} else if newStatus == "" || !newStatus.Valid() {
-		return fmt.Errorf("invalid status %q: must be todo, in-progress, or done", newStatus)
+	if err := checkNewStatus(newStatus, opts.ValidStatuses); err != nil {
+		return err
 	}
 
-	// Resolve a symlink once, so the file read is the file written even if the
-	// link is changed in between.
-	target, err := filepath.EvalSymlinks(path)
+	target, data, err := readItemFile(path)
 	if err != nil {
-		return fmt.Errorf("reading %s: %w", path, err)
-	}
-
-	data, err := os.ReadFile(target)
-	if err != nil {
-		return fmt.Errorf("reading %s: %w", path, err)
+		return err
 	}
 
 	fmStart, fmEnd, _, ok := frontmatterBounds(data)
@@ -96,6 +85,37 @@ func SetStatusWithOptions(path string, newStatus Status, opts MutateOptions) err
 	return nil
 }
 
+// checkNewStatus returns an error unless newStatus is a status the file may be
+// set to: one of valid when it is non-nil, else a built-in status.
+func checkNewStatus(newStatus Status, valid StatusSet) error {
+	if valid != nil {
+		if newStatus == "" || !valid.Contains(newStatus) {
+			return fmt.Errorf("invalid status %q", newStatus)
+		}
+	} else if newStatus == "" || !newStatus.Valid() {
+		return fmt.Errorf("invalid status %q: must be todo, in-progress, or done", newStatus)
+	}
+
+	return nil
+}
+
+// readItemFile returns the file path resolves to and its contents. A symlink is
+// resolved once, so the file read is the file written even if the link is
+// changed in between.
+func readItemFile(path string) (target string, data []byte, err error) {
+	target, err = filepath.EvalSymlinks(path)
+	if err != nil {
+		return "", nil, fmt.Errorf("reading %s: %w", path, err)
+	}
+
+	data, err = os.ReadFile(target)
+	if err != nil {
+		return "", nil, fmt.Errorf("reading %s: %w", path, err)
+	}
+
+	return target, data, nil
+}
+
 // rewriteStatus returns fm with the status set to newStatus, and the key the
 // status is stored under: fieldName when present, as parse reads it first, else
 // alias.
@@ -114,27 +134,16 @@ func rewriteStatus(fm []byte, fieldName, alias string, newStatus Status, path st
 		return nil, "", fmt.Errorf("cannot update %s in %s: frontmatter is not a valid YAML mapping", fieldName, path)
 	}
 
+	offsets := keyOffsets(fm, pairs)
+
 	for _, key = range keys {
-		if matches := keyLineMatches(fm, statusFieldRe(key), pairs, key); len(matches) > 0 {
-			return replaceMatches(fm, matches, newStatus), key, nil
+		out, found, err := rewriteKey(fm, pairs, offsets, key, newStatus, path)
+		if err != nil {
+			return nil, "", err
 		}
 
-		// A key the line pattern misses, such as "st\x61tus" or "? status",
-		// still loads, so find its value through the parsed YAML.
-		for i := 0; i+1 < len(pairs); i += 2 {
-			if keyName(pairs[i]) != key {
-				continue
-			}
-
-			// An alias key (*s) is refused: its text is not the key it reads as.
-			if pairs[i].Kind == yaml.ScalarNode {
-				if out, ok := replaceNodeValue(fm, pairs[i+1], newStatus); ok {
-					return out, key, nil
-				}
-			}
-
-			return nil, "", fmt.Errorf("cannot update %s in %s: status key form not supported for writing; "+
-				"use a plain %s: key", key, path, key)
+		if found {
+			return out, key, nil
 		}
 	}
 
@@ -145,32 +154,91 @@ func rewriteStatus(fm []byte, fieldName, alias string, newStatus Status, path st
 	return nil, "", fmt.Errorf("no %s or %s field found in frontmatter of %s", fieldName, alias, path)
 }
 
-// keyLineMatches returns the submatch indexes of the re matches that start at
-// a top-level key named key. A line inside another key's multi-line quoted
-// value can also match re, and must not be rewritten.
-func keyLineMatches(fm []byte, re *regexp.Regexp, pairs []*yaml.Node, key string) [][]int {
-	matches := re.FindAllSubmatchIndex(fm, -1)
-	starts := make(map[int]bool)
+// keyOffsets returns the byte offset in fm of each key in pairs, in turn, or
+// -1 where it has none.
+func keyOffsets(fm []byte, pairs []*yaml.Node) []int {
+	offsets := make([]int, 0, len(pairs)/2)
+	// Keys come in document order, so each line scan resumes where the last ended.
+	lineStart, line := 0, 1
 
 	for i := 0; i+1 < len(pairs); i += 2 {
-		if pairs[i].Kind != yaml.ScalarNode || pairs[i].Value != key {
-			continue
+		key := pairs[i]
+		off := -1
+
+		if key.Line < line {
+			if o, ok := nodeOffset(fm, key.Line, key.Column); ok {
+				off = o
+			}
+		} else if start, ok := advanceLines(fm, lineStart, key.Line-line); ok {
+			lineStart, line = start, key.Line
+			if o, ok := advanceColumns(fm, start, key.Column-1); ok {
+				off = o
+			}
 		}
 
-		if start, ok := nodeOffset(fm, pairs[i].Line, pairs[i].Column); ok {
-			starts[start] = true
+		offsets = append(offsets, off)
+	}
+
+	return offsets
+}
+
+// rewriteKey returns fm with the status stored under key set to newStatus, and
+// reports whether fm has that key at all. offsets holds the offset of each key
+// in pairs, as keyOffsets returns them.
+func rewriteKey(fm []byte, pairs []*yaml.Node, offsets []int, key string, newStatus Status, path string) (
+	updated []byte, found bool, err error,
+) {
+	re := statusFieldRe(key)
+	var matches [][]int
+
+	first := -1
+
+	for i := 0; i+1 < len(pairs); i += 2 {
+		if first < 0 && keyName(pairs[i]) == key {
+			first = i
+		}
+
+		if m := keyLineMatch(fm, re, pairs[i], offsets[i/2], key); m != nil {
+			matches = append(matches, m)
 		}
 	}
 
-	keyLines := matches[:0]
+	if len(matches) > 0 {
+		return replaceMatches(fm, matches, newStatus), true, nil
+	}
 
-	for _, m := range matches {
-		if starts[m[0]] {
-			keyLines = append(keyLines, m)
+	if first < 0 {
+		return nil, false, nil
+	}
+
+	// A key the line pattern misses, such as "st\x61tus" or "? status", still
+	// loads, so find its value through the parsed YAML. An alias key (*s) is
+	// refused: its text is not the key it reads as.
+	if pairs[first].Kind == yaml.ScalarNode {
+		if out, ok := replaceNodeValue(fm, pairs[first+1], newStatus); ok {
+			return out, true, nil
 		}
 	}
 
-	return keyLines
+	return nil, true, fmt.Errorf("cannot update %s in %s: status key form not supported for writing; "+
+		"use a plain %s: key", key, path, key)
+}
+
+// keyLineMatch returns the submatch indexes, in fm, of the re match at the
+// start of the line holding k, a top-level key at offset off, or nil unless k
+// is a scalar key named key and its line matches. A line inside another key's
+// multi-line quoted value can also match re, and must not be rewritten.
+func keyLineMatch(fm []byte, re *regexp.Regexp, k *yaml.Node, off int, key string) []int {
+	if k.Kind != yaml.ScalarNode || k.Value != key || off < 0 || (off > 0 && fm[off-1] != '\n') {
+		return nil
+	}
+
+	m := re.FindSubmatchIndex(fm[off:])
+	for i := range m {
+		m[i] += off
+	}
+
+	return m
 }
 
 // replaceMatches returns fm with each status match in matches rewritten to newStatus.
@@ -203,12 +271,8 @@ func topLevelPairs(fm []byte) []*yaml.Node {
 // unless value is a plain or quoted scalar on one line whose source text it
 // finds at that position, or an empty value right after its key's colon.
 func replaceNodeValue(fm []byte, value *yaml.Node, newStatus Status) ([]byte, bool) {
-	if value.Kind != yaml.ScalarNode || value.Anchor != "" {
+	if !plainOrQuoted(value) {
 		return nil, false
-	}
-
-	if value.Style != 0 && value.Style != yaml.DoubleQuotedStyle && value.Style != yaml.SingleQuotedStyle {
-		return nil, false // tagged, literal or folded
 	}
 
 	start, ok := nodeOffset(fm, value.Line, value.Column)
@@ -232,15 +296,30 @@ func replaceNodeValue(fm []byte, value *yaml.Node, newStatus Status) ([]byte, bo
 
 	// The text must read back as the whole value: a scalar that goes on past
 	// this line, or a position that does not point at it, does not.
-	var got yaml.Node
-	if err := yaml.Unmarshal(line[:end], &got); err != nil || len(got.Content) == 0 ||
-		got.Content[0].Kind != yaml.ScalarNode || got.Content[0].Value != value.Value {
+	if !readsAs(line[:end], value.Value) {
 		return nil, false
 	}
 
 	out := append(bytes.Clone(fm[:start]), newStatus...)
 
 	return append(out, fm[start+end:]...), true
+}
+
+// plainOrQuoted reports whether value is a plain or quoted scalar with no
+// anchor: not tagged, literal or folded.
+func plainOrQuoted(value *yaml.Node) bool {
+	return value.Kind == yaml.ScalarNode && value.Anchor == "" &&
+		(value.Style == 0 || value.Style == yaml.DoubleQuotedStyle || value.Style == yaml.SingleQuotedStyle)
+}
+
+// readsAs reports whether text parses as a YAML scalar whose value is want.
+func readsAs(text []byte, want string) bool {
+	var got yaml.Node
+	if err := yaml.Unmarshal(text, &got); err != nil || len(got.Content) == 0 {
+		return false
+	}
+
+	return got.Content[0].Kind == yaml.ScalarNode && got.Content[0].Value == want
 }
 
 // fillEmptyValue returns fm with newStatus written after the colon that ends at
@@ -267,9 +346,18 @@ func fillEmptyValue(fm []byte, start int, line []byte, newStatus Status) ([]byte
 // nodeOffset returns the byte offset in src of a yaml.Node's 1-based line and
 // column, counting line breaks and characters as the YAML parser does.
 func nodeOffset(src []byte, line, column int) (int, bool) {
-	off := 0
+	off, ok := advanceLines(src, 0, line-1)
+	if !ok {
+		return 0, false
+	}
 
-	for ; line > 1; line-- {
+	return advanceColumns(src, off, column-1)
+}
+
+// advanceLines returns the offset reached from off after skipping lines line
+// breaks.
+func advanceLines(src []byte, off, lines int) (int, bool) {
+	for ; lines > 0; lines-- {
 		for {
 			if off >= len(src) {
 				return 0, false
@@ -286,7 +374,13 @@ func nodeOffset(src []byte, line, column int) (int, bool) {
 		}
 	}
 
-	for ; column > 1; column-- {
+	return off, true
+}
+
+// advanceColumns returns the offset reached from off after skipping columns
+// characters, none of them a line break.
+func advanceColumns(src []byte, off, columns int) (int, bool) {
+	for ; columns > 0; columns-- {
 		if off >= len(src) || lineBreakLen(src[off:]) > 0 {
 			return 0, false
 		}
@@ -310,17 +404,26 @@ func lineBreakLen(b []byte) int {
 	return 0
 }
 
-// statusFieldRe matches a fieldName key line through its end, plus an indented
-// value on the next line (YAML allows "status:\n  todo"). The key may be quoted
-// or followed by spaces ("status" : todo); group 1 is the key through its colon.
-// replaceStatusValue decides what to keep.
+// statusFieldRe matches a fieldName key line at the start of the text through
+// its end, plus an indented value on the next line (YAML allows
+// "status:\n  todo"). The key may be quoted or followed by spaces
+// ("status" : todo); group 1 is the key through its colon. replaceStatusValue
+// decides what to keep.
 func statusFieldRe(fieldName string) *regexp.Regexp {
 	key := regexp.QuoteMeta(fieldName)
 	single := regexp.QuoteMeta(strings.ReplaceAll(fieldName, "'", "''"))
 
-	return regexp.MustCompile(`(?m)^((?:` + key + `|"` + key + `"|'` + single + `')[ \t]*:)` +
+	return regexp.MustCompile(`^((?:` + key + `|"` + key + `"|'` + single + `')[ \t]*:)` +
 		`[^\r\n]*(?:\r?\n[ \t]+[^\s#][^\r\n]*)?`)
 }
+
+// createTemp, renameFile and openInPlace are os.CreateTemp, os.Rename and
+// os.OpenFile, swapped in tests to make them fail on demand.
+var (
+	createTemp  = os.CreateTemp
+	renameFile  = os.Rename
+	openInPlace = os.OpenFile
+)
 
 // writeFileAtomic replaces the file at path with data, so a crash or a full disk
 // leaves either the old or the new contents, never a truncated file. It writes a
@@ -329,7 +432,11 @@ func statusFieldRe(fieldName string) *regexp.Regexp {
 // Hard links to the file are not kept: the path gets a new inode.
 //
 // Where the temp file cannot be created or renamed over the file (a read-only
-// directory, a bind-mounted file), it falls back to writing the file in place.
+// directory, a bind-mounted file), it falls back to writing the file in place,
+// which gives a weaker guarantee; see writeInPlace. If the temp file was
+// written but could not be renamed, it is kept until the in-place write has
+// succeeded, and if that write fails the error names it, so the new contents
+// can be recovered from it.
 func writeFileAtomic(path string, data []byte) error {
 	info, err := writableInfo(path)
 	if err != nil {
@@ -338,11 +445,12 @@ func writeFileAtomic(path string, data []byte) error {
 
 	dir := filepath.Dir(path)
 
-	// The name ends in .tmp, not .md, so LoadAll never picks it up.
-	tmp, err := os.CreateTemp(dir, "."+filepath.Base(path)+".*.tmp")
+	// The name ends in .tmp, not .md, so LoadAll never picks it up. It leaves out
+	// the item's name, so it fits wherever that name does.
+	tmp, err := createTemp(dir, ".yat-*.tmp")
 	if err != nil {
 		if canWriteInPlace(err) {
-			return os.WriteFile(path, data, info.Mode().Perm())
+			return writeInPlace(path, data)
 		}
 
 		return err
@@ -355,19 +463,64 @@ func writeFileAtomic(path string, data []byte) error {
 		return err
 	}
 
-	if err := os.Rename(tmp.Name(), path); err != nil {
-		_ = os.Remove(tmp.Name())
+	if err := renameFile(tmp.Name(), path); err != nil {
+		if !canWriteInPlace(err) {
+			_ = os.Remove(tmp.Name())
 
-		if canWriteInPlace(err) {
-			return os.WriteFile(path, data, info.Mode().Perm())
+			return err
 		}
 
-		return err
+		if err := writeInPlace(path, data); err != nil {
+			return fmt.Errorf("%w (the new contents are in %s)", err, tmp.Name())
+		}
+
+		_ = os.Remove(tmp.Name())
+
+		return nil
 	}
 
 	syncDir(dir)
 
 	return nil
+}
+
+// writeInPlace writes data over the existing file at path, keeping its inode.
+// It writes from the start without truncating, syncs, then cuts the file to
+// the new length and syncs again. A failed write or sync can leave the start of
+// the new contents over the old, followed by the rest of the old, but never a
+// file shorter than the old or the new contents, whichever is shorter. A
+// failed truncate leaves the new contents followed by the end of the old.
+func writeInPlace(path string, data []byte) error {
+	f, err := openInPlace(path, os.O_WRONLY, 0)
+	if err != nil {
+		return err
+	}
+
+	if err := writeOver(f, data); err != nil {
+		_ = f.Close()
+
+		return err
+	}
+
+	return f.Close()
+}
+
+// writeOver writes data to the start of f, syncs it, truncates f to the length
+// of data and syncs again.
+func writeOver(f *os.File, data []byte) error {
+	if _, err := f.WriteAt(data, 0); err != nil {
+		return err
+	}
+
+	if err := f.Sync(); err != nil {
+		return err
+	}
+
+	if err := f.Truncate(int64(len(data))); err != nil {
+		return err
+	}
+
+	return f.Sync()
 }
 
 // writableInfo returns the file info of the file at path, refusing a file the

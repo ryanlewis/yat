@@ -1,11 +1,13 @@
 package item
 
 import (
+	"bytes"
 	"errors"
 	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
 )
 
@@ -172,5 +174,84 @@ func TestWriteNew_ClosedFile(t *testing.T) {
 
 	if err := writeNew(f, nil, 0o600); !errors.Is(err, os.ErrClosed) {
 		t.Errorf("writeNew on a closed file = %v, want os.ErrClosed", err)
+	}
+}
+
+// A file whose name is near the 255-byte name limit can still be created: the
+// temp file written next to it must not need a longer name.
+func TestCreateFile_LongFileName(t *testing.T) {
+	path := filepath.Join(t.TempDir(), strings.Repeat("a", 247)+".md")
+
+	if err := CreateFile(path, []byte("x"), 0o644); err != nil {
+		t.Fatalf("CreateFile: %v", err)
+	}
+
+	data, err := os.ReadFile(path)
+	if err != nil || string(data) != "x" {
+		t.Errorf("got %q, %v; want \"x\"", data, err)
+	}
+}
+
+// failLink makes linkFile fail with errno for the rest of the test.
+func failLink(t *testing.T, errno syscall.Errno) {
+	t.Helper()
+
+	orig := linkFile
+	linkFile = func(oldname, newname string) error {
+		return &os.LinkError{Op: "link", Old: oldname, New: newname, Err: errno}
+	}
+
+	t.Cleanup(func() { linkFile = orig })
+}
+
+func TestCreateFile_LinkErrorReturned(t *testing.T) {
+	for _, errno := range []syscall.Errno{syscall.ENOSPC, syscall.EDQUOT, syscall.EIO, syscall.EROFS} {
+		t.Run(errno.Error(), func(t *testing.T) {
+			failLink(t, errno)
+
+			dir := t.TempDir()
+			path := filepath.Join(dir, "new.md")
+
+			err := CreateFile(path, []byte("one"), 0o600)
+			if !errors.Is(err, errno) {
+				t.Fatalf("err = %v, want %v", err, errno)
+			}
+
+			if entries, _ := os.ReadDir(dir); len(entries) != 0 {
+				t.Errorf("want dir left empty, got %d entries", len(entries))
+			}
+		})
+	}
+}
+
+func TestCreateFile_LinkUnsupportedFallsBack(t *testing.T) {
+	fallback := []syscall.Errno{
+		syscall.EPERM, syscall.EACCES, syscall.EINVAL, syscall.ENOTSUP, syscall.EOPNOTSUPP, syscall.ENOSYS, syscall.EXDEV,
+	}
+
+	for _, errno := range fallback {
+		t.Run(errno.Error(), func(t *testing.T) {
+			failLink(t, errno)
+
+			dir := t.TempDir()
+			path := filepath.Join(dir, "new.md")
+
+			want := []byte("direct write")
+			if err := CreateFile(path, want, 0o600); err != nil {
+				t.Fatalf("CreateFile: %v", err)
+			}
+
+			if data, _ := os.ReadFile(path); !bytes.Equal(data, want) {
+				t.Errorf("file = %q, want %q", data, want)
+			}
+
+			if entries, _ := os.ReadDir(dir); len(entries) != 1 {
+				t.Errorf("want only new.md left, got %d entries", len(entries))
+			}
+
+			if err := CreateFile(path, []byte("two"), 0o600); !errors.Is(err, ErrFileExists) {
+				t.Errorf("second CreateFile = %v, want ErrFileExists", err)
+			}
+		})
 	}
 }

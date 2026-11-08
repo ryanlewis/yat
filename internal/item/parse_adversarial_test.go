@@ -924,3 +924,22 @@ func TestFrontmatterBounds_ClosingLine(t *testing.T) {
 		})
 	}
 }
+
+func TestParseWithOptions_AliasKeyThatIsNotAString(t *testing.T) {
+	// An alias key such as ~ or 5 decodes as a null or an int. Once renamed it
+	// must read as the field it stands for, not keep its old type.
+	for _, alias := range []string{"~", "null", "5", "true"} {
+		t.Run(alias, func(t *testing.T) {
+			input := "---\nid: A\n" + alias + ": Hello\n---\n"
+			opts := ParseOptions{Aliases: map[string]string{alias: "title"}}
+
+			it, err := ParseWithOptions([]byte(input), "test.md", opts)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if it == nil || it.Title != "Hello" {
+				t.Fatalf("got %+v, want title Hello", it)
+			}
+		})
+	}
+}

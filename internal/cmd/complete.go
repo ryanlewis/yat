@@ -44,28 +44,40 @@ func (c *CompleteCmd) Run(rc *RunContext) error {
 	}
 
 	if rc.JSON {
-		out := completeJSON{
-			ID:           it.ID,
-			Title:        it.Title,
-			Unblocked:    []unblockedRef{},
-			StillBlocked: []blockedRef{},
-		}
-
-		for _, u := range unblocked {
-			out.Unblocked = append(out.Unblocked, unblockedRef{ID: u.ID, Title: u.Title})
-		}
-
-		for _, b := range stillBlocked {
-			out.StillBlocked = append(out.StillBlocked, blockedRef{
-				ID:        b.ID,
-				Title:     b.Title,
-				WaitingOn: rc.Graph.WaitingOn(b.ID),
-			})
-		}
-
-		return rc.writeJSON(out)
+		return rc.writeJSON(completeOutput(rc, it, unblocked, stillBlocked))
 	}
 
+	printCompleted(rc, it, unblocked, stillBlocked)
+
+	return nil
+}
+
+// completeOutput returns the --json output for completing it.
+func completeOutput(rc *RunContext, it *item.Item, unblocked, stillBlocked []*item.Item) completeJSON {
+	out := completeJSON{
+		ID:           it.ID,
+		Title:        it.Title,
+		Unblocked:    []unblockedRef{},
+		StillBlocked: []blockedRef{},
+	}
+
+	for _, u := range unblocked {
+		out.Unblocked = append(out.Unblocked, unblockedRef{ID: u.ID, Title: u.Title})
+	}
+
+	for _, b := range stillBlocked {
+		out.StillBlocked = append(out.StillBlocked, blockedRef{
+			ID:        b.ID,
+			Title:     b.Title,
+			WaitingOn: rc.Graph.WaitingOn(b.ID),
+		})
+	}
+
+	return out
+}
+
+// printCompleted prints the text output for completing it.
+func printCompleted(rc *RunContext, it *item.Item, unblocked, stillBlocked []*item.Item) {
 	rc.printf("Completed %s: %s\n", it.ID, oneLine(it.Title))
 
 	if len(unblocked) > 0 {
@@ -84,8 +96,6 @@ func (c *CompleteCmd) Run(rc *RunContext) error {
 			rc.printf("  %s  %s (waiting on: %s)\n", b.ID, oneLine(b.Title), strings.Join(waiting, ", "))
 		}
 	}
-
-	return nil
 }
 
 // complete sets the item done and returns it with the items it unblocks and

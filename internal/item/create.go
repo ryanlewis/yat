@@ -6,10 +6,14 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"syscall"
 )
 
 // ErrFileExists is returned by CreateFile when a file is already at the path.
 var ErrFileExists = errors.New("file already exists")
+
+// linkFile is os.Link, swapped in tests to make the link fail on demand.
+var linkFile = os.Link
 
 // CreateFile writes data to a new file at path with mode perm, refusing to
 // replace a file that is already there. Like writeFileAtomic it writes a hidden
@@ -18,7 +22,7 @@ var ErrFileExists = errors.New("file already exists")
 func CreateFile(path string, data []byte, perm fs.FileMode) error {
 	dir := filepath.Dir(path)
 
-	tmp, err := os.CreateTemp(dir, "."+filepath.Base(path)+".*.tmp")
+	tmp, err := os.CreateTemp(dir, ".yat-*.tmp")
 	if err != nil {
 		return err
 	}
@@ -33,7 +37,7 @@ func CreateFile(path string, data []byte, perm fs.FileMode) error {
 	}
 
 	// Link, unlike Rename, fails when path exists, so a file is never replaced.
-	err = os.Link(tmpName, path)
+	err = linkFile(tmpName, path)
 
 	switch {
 	case err == nil:
@@ -42,10 +46,26 @@ func CreateFile(path string, data []byte, perm fs.FileMode) error {
 		return nil
 	case errors.Is(err, fs.ErrExist):
 		return fmt.Errorf("%w: %s", ErrFileExists, path)
+	case retryPointless(err):
+		return err // an *os.LinkError, naming both paths
 	default:
 		// The filesystem may not support hard links; write the file directly.
 		return createExclusive(path, data, perm)
 	}
+}
+
+// retryPointless reports whether a link error means the disk itself is failing
+// (full, over quota, read-only or erroring), so a direct write would only hit
+// it again, this time without atomicity. Filesystems without hard links fail
+// in many other ways (EPERM, EACCES, EINVAL, ENOSYS), and those fall back.
+func retryPointless(err error) bool {
+	for _, errno := range []syscall.Errno{syscall.ENOSPC, syscall.EDQUOT, syscall.EIO, syscall.EROFS} {
+		if errors.Is(err, errno) {
+			return true
+		}
+	}
+
+	return false
 }
 
 // writeNew writes data to f, gives it mode perm, syncs it to disk and closes it.
@@ -65,7 +85,8 @@ func writeNew(f *os.File, data []byte, perm fs.FileMode) error {
 	return f.Close()
 }
 
-// createExclusive writes data to a new file at path, failing if one exists.
+// createExclusive writes data to a new file at path, failing if one exists, and
+// syncs the parent directory so the new entry survives a crash.
 func createExclusive(path string, data []byte, perm fs.FileMode) error {
 	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, perm)
 	if err != nil {
@@ -82,6 +103,8 @@ func createExclusive(path string, data []byte, perm fs.FileMode) error {
 
 		return err
 	}
+
+	syncDir(filepath.Dir(path))
 
 	return nil
 }

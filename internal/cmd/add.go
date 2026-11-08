@@ -226,38 +226,12 @@ func parsePriority(s string) (item.Priority, error) {
 // resolveID returns --id when given, else the next id for the prefix.
 func (a *AddCmd) resolveID(rc *RunContext) (string, error) {
 	if a.ID != "" {
-		if err := checkIDText("id", a.ID); err != nil {
-			return "", err
-		}
-
-		if hasID(rc.Items, a.ID) {
-			return "", fmt.Errorf("item %q already exists", a.ID)
-		}
-
-		if path, ok := skippedWithID(rc.skipped, a.ID); ok {
-			return "", fmt.Errorf("item %q may already exist in %s, which was skipped as unreadable; "+
-				"make it readable or pass another --id", a.ID, path)
-		}
-
-		return a.ID, nil
+		return a.checkID(rc)
 	}
 
-	prefix := a.Prefix
-	if prefix != "" {
-		if err := checkIDText("prefix", prefix); err != nil {
-			return "", err
-		}
-	} else {
-		var ok bool
-		if prefix, ok = inferPrefix(rc.Items, a.Type); !ok {
-			kind := "untyped items"
-			if a.Type != "" {
-				kind = fmt.Sprintf("items of type %q", a.Type)
-			}
-
-			return "", fmt.Errorf("cannot pick an id: no %s have a numbered id; "+
-				"pass --prefix (e.g. --prefix TK-) or --id", kind)
-		}
+	prefix, err := a.resolvePrefix(rc)
+	if err != nil {
+		return "", err
 	}
 
 	taken, err := skippedIDs(rc.skipped, prefix, idWidth(rc.Items, prefix))
@@ -271,6 +245,50 @@ func (a *AddCmd) resolveID(rc *RunContext) (string, error) {
 	}
 
 	return id, nil
+}
+
+// checkID returns --id unless it cannot be a file name or an item, readable
+// or skipped, may already have it.
+func (a *AddCmd) checkID(rc *RunContext) (string, error) {
+	if err := checkIDText("id", a.ID); err != nil {
+		return "", err
+	}
+
+	if hasID(rc.Items, a.ID) {
+		return "", fmt.Errorf("item %q already exists", a.ID)
+	}
+
+	if path, ok := skippedWithID(rc.skipped, a.ID); ok {
+		return "", fmt.Errorf("item %q may already exist in %s, which was skipped as unreadable; "+
+			"make it readable or pass another --id", a.ID, path)
+	}
+
+	return a.ID, nil
+}
+
+// resolvePrefix returns --prefix when given, else the prefix items of the
+// same type number their ids with.
+func (a *AddCmd) resolvePrefix(rc *RunContext) (string, error) {
+	if a.Prefix != "" {
+		if err := checkIDText("prefix", a.Prefix); err != nil {
+			return "", err
+		}
+
+		return a.Prefix, nil
+	}
+
+	prefix, ok := inferPrefix(rc.Items, a.Type)
+	if !ok {
+		kind := "untyped items"
+		if a.Type != "" {
+			kind = fmt.Sprintf("items of type %q", a.Type)
+		}
+
+		return "", fmt.Errorf("cannot pick an id: no %s have a numbered id; "+
+			"pass --prefix (e.g. --prefix TK-) or --id", kind)
+	}
+
+	return prefix, nil
 }
 
 // skippedIDs returns an item for each skipped file whose name starts with an id
@@ -644,12 +662,43 @@ func (rc *RunContext) checkReadsBack(data []byte, it *item.Item) error {
 		ValidStatuses: item.NewStatusSet(rc.Statuses.AllValid()),
 	})
 
-	if err != nil || got == nil || got.ID != it.ID || got.Title != it.Title || got.Type != it.Type ||
-		got.Priority != it.Priority || got.Points != it.Points || got.Status != it.Status ||
-		got.Phase != it.Phase || !slices.Equal(got.Dependencies, it.Dependencies) {
-		return fmt.Errorf("cannot write %s: it would not read back as written under this project's field_aliases",
-			it.FilePath)
+	const refusal = "cannot write %s: it would not read back as written under this project's field_aliases"
+
+	switch {
+	case err != nil:
+		return fmt.Errorf(refusal+": %w", it.FilePath, err)
+	case got == nil:
+		return fmt.Errorf(refusal+": yat would skip it", it.FilePath)
+	}
+
+	if field := differingField(got, it); field != "" {
+		return fmt.Errorf(refusal+": field %q differs", it.FilePath, field)
 	}
 
 	return nil
+}
+
+// differingField names the first field checkReadsBack compares that differs
+// between got and want, or returns "" if none does.
+func differingField(got, want *item.Item) string {
+	switch {
+	case got.ID != want.ID:
+		return "id"
+	case got.Title != want.Title:
+		return "title"
+	case got.Type != want.Type:
+		return "type"
+	case got.Priority != want.Priority:
+		return "priority"
+	case got.Points != want.Points:
+		return "points"
+	case got.Status != want.Status:
+		return "status"
+	case got.Phase != want.Phase:
+		return "phase"
+	case !slices.Equal(got.Dependencies, want.Dependencies):
+		return "dependencies"
+	}
+
+	return ""
 }
