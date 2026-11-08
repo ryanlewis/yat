@@ -969,8 +969,8 @@ func TestE2E_MissingIDWarning(t *testing.T) {
 		t.Errorf("expected no stderr output, got: %q", stderr)
 	}
 	// Stdout should still work
-	if !strings.Contains(stdout, "1 items") {
-		t.Errorf("expected '1 items' in stdout, got:\n%s", stdout)
+	if !strings.Contains(stdout, "1 item:") {
+		t.Errorf("expected '1 item:' in stdout, got:\n%s", stdout)
 	}
 }
 

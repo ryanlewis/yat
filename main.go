@@ -72,7 +72,8 @@ func execute(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 type kongExit int
 
 // parse parses args into c. ok is false when kong has already handled them,
-// as for --help or a usage error, and the run should end with code.
+// as for --help or a usage error, and the run should end with code. After
+// parse returns, kong's Exit is os.Exit again.
 func parse(c *cli, args []string, stdout, stderr io.Writer) (ctx *kong.Context, code int, ok bool) {
 	defer func() {
 		if r := recover(); r != nil {
@@ -99,6 +100,9 @@ func parse(c *cli, args []string, stdout, stderr io.Writer) (ctx *kong.Context, 
 
 	ctx, err := parser.Parse(args)
 	parser.FatalIfErrorf(err)
+
+	// Only parse recovers kongExit, so a later Exit must not panic with it.
+	parser.Exit = os.Exit
 
 	return ctx, 0, true
 }

@@ -5,6 +5,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 )
 
 // StatusCmd shows an overview of all items.
@@ -169,7 +170,12 @@ func writePhases(rc *RunContext, d *statusData, names []string) {
 func (s *StatusCmd) writeText(rc *RunContext, d *statusData) error {
 	st := rc.styles()
 	typeParts := formatTypeCounts(d.byType)
-	rc.printf("%s items: %s\n", st.Bold(fmt.Sprintf("%d", d.totalItems)), strings.Join(typeParts, ", "))
+	noun := "item"
+	if d.totalItems != 1 {
+		noun += "s"
+	}
+
+	rc.printf("%s %s: %s\n", st.Bold(fmt.Sprintf("%d", d.totalItems)), noun, strings.Join(typeParts, ", "))
 	rc.printf("Total points: %s\n\n", st.Bold(fmt.Sprintf("%d", d.totalPoints)))
 
 	w := rc.newTabWriter()
@@ -217,16 +223,30 @@ func (s *StatusCmd) writeText(rc *RunContext, d *statusData) error {
 
 func pluralizeType(t string) string {
 	lower := strings.ToLower(t)
-	if len(lower) >= 2 && lower[len(lower)-1] == 'y' {
-		// Only consonant+y gets -ies (e.g. story→stories).
-		// Vowel+y just gets -s (e.g. deploy→deploys).
-		beforeY := lower[len(lower)-2]
-		if beforeY != 'a' && beforeY != 'e' && beforeY != 'i' && beforeY != 'o' && beforeY != 'u' {
-			return lower[:len(lower)-1] + "ies"
-		}
+
+	switch {
+	case endsInConsonantY(lower):
+		return strings.TrimSuffix(lower, "y") + "ies"
+	case strings.HasSuffix(lower, "s"), strings.HasSuffix(lower, "x"), strings.HasSuffix(lower, "z"),
+		strings.HasSuffix(lower, "ch"), strings.HasSuffix(lower, "sh"):
+		return lower + "es"
 	}
 
 	return lower + "s"
+}
+
+// endsInConsonantY reports whether s ends in an ASCII consonant followed by
+// y (story→stories). Vowel+y (deploy→deploys) and non-ASCII letters before
+// the y just get -s.
+func endsInConsonantY(s string) bool {
+	rest, ok := strings.CutSuffix(s, "y")
+	if !ok {
+		return false
+	}
+
+	prev, _ := utf8.DecodeLastRuneInString(rest)
+
+	return prev >= 'a' && prev <= 'z' && !strings.ContainsRune("aeiou", prev)
 }
 
 // typeCount renders one type's count in the summary, e.g. "1 spike",

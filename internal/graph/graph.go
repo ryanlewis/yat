@@ -291,6 +291,19 @@ func (g *Graph) ReadyAll() []*item.Item {
 }
 
 func (g *Graph) readyItems(includeActive bool) []*item.Item {
+	ready := g.readyCandidates(includeActive)
+	if len(ready) <= 1 {
+		return ready
+	}
+
+	g.sortReady(ready)
+
+	return ready
+}
+
+// readyCandidates returns the non-done items whose dependencies are all done,
+// leaving out active items unless includeActive is set.
+func (g *Graph) readyCandidates(includeActive bool) []*item.Item {
 	var ready []*item.Item
 
 	for _, i := range g.items {
@@ -307,54 +320,69 @@ func (g *Graph) readyItems(includeActive bool) []*item.Item {
 		}
 	}
 
-	if len(ready) <= 1 {
-		return ready
-	}
+	return ready
+}
 
+// readyKey holds the sort keys for one ready item, computed once per item
+// rather than on every comparison.
+type readyKey struct {
+	item     *item.Item
+	phase    int
+	priority int
+	depth    int
+	unblocks int
+}
+
+// sortReady sorts ready items in place by phase match, priority, critical
+// path depth (descending), unblock impact (descending), then ID.
+func (g *Graph) sortReady(ready []*item.Item) {
 	activePhase := g.ActivePhase()
 	depths := g.criticalDepthMap()
 
-	unblockCounts := make(map[string]int, len(ready))
-	for _, i := range ready {
-		unblockCounts[i.ID] = len(g.UnblockedBy(i.ID))
+	keys := make([]readyKey, len(ready))
+	for n, i := range ready {
+		keys[n] = readyKey{
+			item:     i,
+			phase:    phaseRank(i.Phase, activePhase),
+			priority: item.PriorityRank(i.Priority),
+			depth:    depths[i.ID],
+			unblocks: g.countUnblockedBy(i.ID),
+		}
 	}
 
-	sort.Slice(ready, func(a, b int) bool {
-		ia, ib := ready[a], ready[b]
-
-		// 1. Phase match (active phase first, no phase neutral, wrong phase last)
-		pa := phaseRank(ia.Phase, activePhase)
-		pb := phaseRank(ib.Phase, activePhase)
-		if pa != pb {
-			return pa < pb
-		}
-
-		// 2. Priority
-		pra := item.PriorityRank(ia.Priority)
-		prb := item.PriorityRank(ib.Priority)
-		if pra != prb {
-			return pra < prb
-		}
-
-		// 3. Critical path depth (deeper chain = more important)
-		da := depths[ia.ID]
-		db := depths[ib.ID]
-		if da != db {
-			return da > db
-		}
-
-		// 4. Unblock impact (more immediate unblocks = more important)
-		ua := unblockCounts[ia.ID]
-		ub := unblockCounts[ib.ID]
-		if ua != ub {
-			return ua > ub
-		}
-
-		// 5. ID tiebreaker
-		return ia.ID < ib.ID
+	sort.Slice(keys, func(a, b int) bool {
+		return readyLess(keys[a], keys[b])
 	})
 
-	return ready
+	for n, k := range keys {
+		ready[n] = k.item
+	}
+}
+
+// readyLess reports whether a sorts before b.
+func readyLess(a, b readyKey) bool {
+	// 1. Phase match (active phase first, no phase neutral, wrong phase last)
+	if a.phase != b.phase {
+		return a.phase < b.phase
+	}
+
+	// 2. Priority
+	if a.priority != b.priority {
+		return a.priority < b.priority
+	}
+
+	// 3. Critical path depth (deeper chain = more important)
+	if a.depth != b.depth {
+		return a.depth > b.depth
+	}
+
+	// 4. Unblock impact (more immediate unblocks = more important)
+	if a.unblocks != b.unblocks {
+		return a.unblocks > b.unblocks
+	}
+
+	// 5. ID tiebreaker
+	return a.item.ID < b.item.ID
 }
 
 // phaseRank returns a sort rank for an item's phase relative to the active phase.
@@ -431,27 +459,8 @@ func (g *Graph) partitionDependents(id string, wantReady bool) []*item.Item {
 	var result []*item.Item
 
 	for _, depID := range g.reverse[id] {
-		dep, ok := g.items[depID]
-		if !ok || g.isDone(dep.Status) {
-			continue
-		}
-
-		allOthersDone := true
-
-		for _, otherDep := range g.forward[depID] {
-			if otherDep == id {
-				continue
-			}
-
-			other, exists := g.items[otherDep]
-			if !exists || !g.isDone(other.Status) {
-				allOthersDone = false
-
-				break
-			}
-		}
-
-		if allOthersDone == wantReady {
+		dep, allOthersDone, ok := g.dependentState(id, depID)
+		if ok && allOthersDone == wantReady {
 			result = append(result, dep)
 		}
 	}
@@ -461,6 +470,41 @@ func (g *Graph) partitionDependents(id string, wantReady bool) []*item.Item {
 	})
 
 	return result
+}
+
+// countUnblockedBy returns len(UnblockedBy(id)) without building or sorting a slice.
+func (g *Graph) countUnblockedBy(id string) int {
+	n := 0
+
+	for _, depID := range g.reverse[id] {
+		if _, allOthersDone, ok := g.dependentState(id, depID); ok && allOthersDone {
+			n++
+		}
+	}
+
+	return n
+}
+
+// dependentState looks up depID, a dependent of id. ok is false when it is missing or done.
+// allOthersDone reports whether every dependency of depID other than id is done.
+func (g *Graph) dependentState(id, depID string) (dep *item.Item, allOthersDone, ok bool) {
+	dep, found := g.items[depID]
+	if !found || g.isDone(dep.Status) {
+		return nil, false, false
+	}
+
+	for _, otherDep := range g.forward[depID] {
+		if otherDep == id {
+			continue
+		}
+
+		other, exists := g.items[otherDep]
+		if !exists || !g.isDone(other.Status) {
+			return dep, false, true
+		}
+	}
+
+	return dep, true, true
 }
 
 // TopologicalLayers returns items grouped into layers using Kahn's algorithm.
