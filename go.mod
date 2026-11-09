@@ -2,10 +2,10 @@ module github.com/ryanlewis/yat
 
 go 1.26.0
 
-toolchain go1.26.10
+toolchain go1.27.3
 
 require (
-	github.com/alecthomas/kong v1.14.0
+	github.com/alecthomas/kong v1.17.0
 	github.com/charmbracelet/glamour v1.0.0
 	github.com/charmbracelet/lipgloss v1.1.1-0.20250404203927-76690c660834
 	github.com/ergochat/readline v0.1.3
