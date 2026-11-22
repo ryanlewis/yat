@@ -7,7 +7,8 @@ import (
 	"sync"
 	"unicode"
 
-	"github.com/charmbracelet/glamour"
+	"charm.land/glamour/v2"
+	"charm.land/glamour/v2/styles"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/ryanlewis/yat/internal/config"
 	"github.com/ryanlewis/yat/internal/item"
@@ -18,6 +19,7 @@ import (
 // When output is not a TTY, all methods return unstyled text.
 type Styles struct {
 	w     io.Writer
+	r     *lipgloss.Renderer
 	isTTY bool
 
 	glamourOnce sync.Once
@@ -42,6 +44,7 @@ func newStyles(w io.Writer, statuses config.StatusGroups) *Styles {
 
 	return &Styles{
 		w:     w,
+		r:     r,
 		isTTY: isTermWriter(w),
 		bold:  r.NewStyle().Bold(true),
 		dim:   r.NewStyle().Faint(true),
@@ -120,8 +123,16 @@ func (s *Styles) RenderBody(body string) string {
 
 	s.glamourOnce.Do(func() {
 		width := termWidth(s.w)
+
+		// glamour v2 dropped WithAutoStyle; pick dark or light from the
+		// background of the terminal s.w writes to.
+		style := styles.LightStyle
+		if s.r.HasDarkBackground() {
+			style = styles.DarkStyle
+		}
+
 		gr, err := glamour.NewTermRenderer(
-			glamour.WithAutoStyle(),
+			glamour.WithStandardStyle(style),
 			glamour.WithWordWrap(width),
 		)
 		if err == nil {
