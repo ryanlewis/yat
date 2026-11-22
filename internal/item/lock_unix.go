@@ -25,7 +25,7 @@ func LockDir(dir string) (func(), error) {
 		return nil, fmt.Errorf("locking %s: %w", dir, err)
 	}
 
-	fd := int(f.Fd()) //nolint:gosec // file descriptors fit in int
+	fd := int(f.Fd())
 	deadline := time.Now().Add(lockWait)
 
 	for {
