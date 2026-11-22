@@ -6,7 +6,7 @@ toolchain go1.27.4
 
 require (
 	github.com/alecthomas/kong v1.17.0
-	github.com/charmbracelet/glamour v1.0.0
+	github.com/charmbracelet/glamour/v2 v2.0.1
 	github.com/charmbracelet/lipgloss v1.1.1-0.20250404203927-76690c660834
 	github.com/ergochat/readline v0.1.3
 	golang.org/x/term v0.48.0
