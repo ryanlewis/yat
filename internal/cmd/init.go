@@ -509,7 +509,7 @@ func isTerminal(r io.Reader) bool {
 		return false
 	}
 
-	return term.IsTerminal(int(f.Fd())) //nolint:gosec // file descriptors fit in int
+	return term.IsTerminal(int(f.Fd()))
 }
 
 // promptDirInteractive asks for the items directory with tab completion. It

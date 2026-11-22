@@ -188,7 +188,7 @@ func isTermWriter(w interface{}) bool {
 		return false
 	}
 
-	return term.IsTerminal(int(f.Fd())) //nolint:gosec // file descriptors fit in int
+	return term.IsTerminal(int(f.Fd()))
 }
 
 func termWidth(w io.Writer) int {
@@ -197,7 +197,7 @@ func termWidth(w io.Writer) int {
 		return defaultTermWidth
 	}
 
-	width, _, err := term.GetSize(int(f.Fd())) //nolint:gosec // file descriptors fit in int
+	width, _, err := term.GetSize(int(f.Fd()))
 	if err != nil || width <= 0 {
 		return defaultTermWidth
 	}

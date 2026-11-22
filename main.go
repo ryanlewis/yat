@@ -160,7 +160,7 @@ func report(stderr io.Writer, err error) int {
 // isTerminal reports whether r is a terminal.
 func isTerminal(r io.Reader) bool {
 	f, ok := r.(*os.File)
-	return ok && term.IsTerminal(int(f.Fd())) //nolint:gosec // file descriptors fit in int
+	return ok && term.IsTerminal(int(f.Fd()))
 }
 
 // newRunContext loads the items for the selected command. A command that
