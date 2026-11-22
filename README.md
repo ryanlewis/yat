@@ -129,7 +129,7 @@ Still blocked (partial deps resolved):
 
 ## Mixing items with other markdown
 
-yat scans all `.md` files in the items directory. Files without frontmatter or without an `id` field are silently skipped, so plain markdown notes can coexist alongside items.
+yat scans all `.md` files in the items directory. Files without frontmatter or without an `id` field are silently skipped, so plain markdown notes can coexist alongside items. A file that opens frontmatter with a `---` line but has no closing `---` line is skipped with a warning. The closing line may have trailing spaces or tabs.
 
 To explicitly tell yat to skip a file that has frontmatter, add a `yat` directive:
 
