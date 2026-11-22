@@ -430,7 +430,7 @@ func isTerminal(r io.Reader) bool {
 		return false
 	}
 
-	return term.IsTerminal(int(f.Fd())) //nolint:gosec // file descriptors fit in int
+	return term.IsTerminal(int(f.Fd()))
 }
 
 func promptDirInteractive(stdout io.Writer, stdin io.Reader) (string, error) {

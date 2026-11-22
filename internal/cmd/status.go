@@ -40,6 +40,13 @@ type statusData struct {
 	deepestItems []string
 }
 
+// Keys of statusData.groups.
+const (
+	groupDone    = "done"
+	groupActive  = "active"
+	groupInitial = "initial"
+)
+
 type groupAccum struct {
 	count  int
 	points int
@@ -64,9 +71,9 @@ func (s *StatusCmd) collect(rc *RunContext) (*statusData, error) {
 	var totalPoints int
 
 	groups := map[string]*groupAccum{
-		"done":    {},
-		"active":  {},
-		"initial": {},
+		groupDone:    {},
+		groupActive:  {},
+		groupInitial: {},
 	}
 
 	byPhase := make(map[string]*groupAccum)
@@ -76,19 +83,20 @@ func (s *StatusCmd) collect(rc *RunContext) (*statusData, error) {
 		totalPoints += it.Points
 
 		st := string(it.Status)
+		var g *groupAccum
 		switch {
 		case rc.Statuses.IsDone(st):
-			groups["done"].count++
-			groups["done"].points += it.Points
+			g = groups[groupDone]
 		case rc.Statuses.IsActive(st):
-			groups["active"].count++
-			groups["active"].points += it.Points
+			g = groups[groupActive]
 		case rc.Statuses.IsInitial(st):
-			groups["initial"].count++
-			groups["initial"].points += it.Points
+			g = groups[groupInitial]
 		default:
 			return nil, fmt.Errorf("unexpected status %q for item %s", it.Status, it.ID)
 		}
+
+		g.count++
+		g.points += it.Points
 
 		if it.Phase != "" {
 			if byPhase[it.Phase] == nil {
@@ -179,16 +187,9 @@ func (s *StatusCmd) writeText(rc *RunContext, d *statusData) error {
 	rc.printf("Total points: %s\n\n", st.Bold(fmt.Sprintf("%d", d.totalPoints)))
 
 	w := rc.newTabWriter()
-	for _, entry := range []struct {
-		label string
-		key   string
-	}{
-		{"done", "done"},
-		{"active", "active"},
-		{"initial", "initial"},
-	} {
-		g := d.groups[entry.key]
-		fmt.Fprintf(w, "  %s:\t%d\t(%d pts)\n", entry.label, g.count, g.points)
+	for _, key := range []string{groupDone, groupActive, groupInitial} {
+		g := d.groups[key]
+		fmt.Fprintf(w, "  %s:\t%d\t(%d pts)\n", key, g.count, g.points)
 	}
 
 	if err := w.Flush(); err != nil {
